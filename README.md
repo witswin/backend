@@ -76,13 +76,13 @@ PRIVY_JWKS_URL=""
 ```
 
 
-### Create base network 
+<!-- ### Create base network 
 
 ```
 docker network create base
-```
+``` -->
 
-` Launch docker instance:`
+### Launch docker instance:
 
 ```
 docker compose up
