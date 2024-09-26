@@ -23,13 +23,19 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task()
+def task_retry_cronjob(competition_pk, winners: list[str], amount):
+    competition = Competition.objects.get(pk=competition_pk)
+
+    return handle_quiz_end(competition, winners, amount)
+
+
 def handle_quiz_end(competition: Competition, winners: list[str], amount):
     try:
         manager = ContractManager()
         win_amount = int(amount)
         tx = manager.distribute(winners, [win_amount for i in winners])
     except SafeContractException as e:
-        handle_quiz_end.delay(competition, winners, amount)  # type: ignore
+        task_retry_cronjob.delay(competition.pk, winners, amount)
         raise e
 
     competition.tx_hash = str(tx.hex())
