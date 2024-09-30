@@ -1,8 +1,15 @@
 import random
 
 from rest_framework import serializers
-
-from quiz.models import Choice, Competition, Question, Sponsor, UserAnswer, UserCompetition
+from core.fields import CurrentUserProfileDefault
+from quiz.models import (
+    Choice,
+    Competition,
+    Question,
+    Sponsor,
+    UserAnswer,
+    UserCompetition,
+)
 from quiz.utils import is_user_eligible_to_participate
 
 
@@ -21,13 +28,14 @@ class SmallQuestionSerializer(serializers.ModelSerializer):
 class CompetitionSerializer(serializers.ModelSerializer):
     questions = SmallQuestionSerializer(many=True, read_only=True)
     sponsors = SponsorSerializer(many=True, read_only=True)
-    participants_count = serializers.IntegerField(source='participants.count', read_only=True)
+    participants_count = serializers.IntegerField(
+        source="participants.count", read_only=True
+    )
+    user_profile = CurrentUserProfileDefault()
 
     class Meta:
         model = Competition
-        exclude = (
-            "participants",
-        )
+        exclude = ("participants",)
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
@@ -38,10 +46,18 @@ class ChoiceSerializer(serializers.ModelSerializer):
         exclude = ["is_hinted_choice"]
 
     def get_is_correct(self, choice: Choice):
-        if self.context.get("include_is_correct", False) or choice.question.answer_can_be_shown:
+        if (
+            self.context.get("include_is_correct", False)
+            or choice.question.answer_can_be_shown
+        ):
             return choice.is_correct
         return None
 
+
+class ChoiceCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Choice
+        exclude = ("question",)
 
 
 class QuestionSerializer(serializers.ModelSerializer):
@@ -64,7 +80,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     def get_is_eligible(self, ques: Question):
         if self.context.get("request"):
             try:
-                user_profile = self.context.get("request").user.profile # type: ignore
+                user_profile = self.context.get("request").user.profile  # type: ignore
             except AttributeError:
                 return False
         else:
@@ -90,19 +106,21 @@ class QuestionSerializer(serializers.ModelSerializer):
             prize_amount_per_user = prize_amount / remain_participants_count
             return prize_amount_per_user
         except ZeroDivisionError:
-            if (
-                ques.competition.is_active
-                and ques.competition.can_be_shown
-            ):
+            if ques.competition.is_active and ques.competition.can_be_shown:
                 return prize_amount
         except TypeError:
-            if (
-                ques.competition.is_active
-                and ques.competition.can_be_shown
-            ):
+            if ques.competition.is_active and ques.competition.can_be_shown:
                 remain_participants_count = self.get_total_participants_count(ques)
 
                 return prize_amount / remain_participants_count
+
+
+class QuestionCreateSerializer(serializers.ModelSerializer):
+    choices = ChoiceCreateSerializer(many=True)
+
+    class Meta:
+        model = Question
+        exclude = ("competition",)
 
 
 class CompetitionField(serializers.PrimaryKeyRelatedField):
@@ -126,9 +144,18 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
         try:
             item = Choice.objects.get(pk=pk)
             if self.context.get("request"):
-                serializer = ChoiceSerializer(item, context={"include_is_correct": self.context.get("request").method == "POST"})
+                serializer = ChoiceSerializer(
+                    item,
+                    context={
+                        "include_is_correct": self.context.get("request").method
+                        == "POST"
+                    },
+                )
             else:
-                serializer = ChoiceSerializer(item, context={"include_is_correct": bool(self.context.get("create")) })
+                serializer = ChoiceSerializer(
+                    item,
+                    context={"include_is_correct": bool(self.context.get("create"))},
+                )
             return serializer.data
         except Choice.DoesNotExist:
             return None
@@ -136,27 +163,19 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
 
 class UserCompetitionSerializer(serializers.ModelSerializer):
     competition = CompetitionField(
-        queryset=Competition.objects.not_started.filter(
-            is_active=True
-        )
+        queryset=Competition.objects.not_started.filter(is_active=True)
     )
 
     class Meta:
         model = UserCompetition
         fields = "__all__"
-        read_only_fields = [
-            "pk",
-            "user_profile",
-            "is_winner",
-            "amount_won",
-            "tx_hash"
-        ]
+        read_only_fields = ["pk", "user_profile", "is_winner", "amount_won", "tx_hash"]
 
     def create(self, validated_data):
-        competition = validated_data.get('competition')
-        
-        validated_data['hint_count'] = competition.hint_count
-        
+        competition = validated_data.get("competition")
+
+        validated_data["hint_count"] = competition.hint_count
+
         return super().create(validated_data)
 
 
@@ -184,3 +203,42 @@ class UserAnswerSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAnswer
         fields = "__all__"
+
+
+class CompetitionCreateSerializer(serializers.ModelSerializer):
+    questions = QuestionCreateSerializer(many=True)
+    user_profile = serializers.HiddenField(default=CurrentUserProfileDefault())
+    is_active = serializers.HiddenField(default=False)
+
+    class Meta:
+        model = Competition
+        fields = [
+            "title",
+            "details",
+            "start_at",
+            "is_active",
+            "prize_amount",
+            "chain_id",
+            "token",
+            "token_decimals",
+            "token_address",
+            "email_url",
+            "telegram_url",
+            "hint_count",
+            "questions",
+            "user_profile",
+        ]
+
+    def create(self, validated_data):
+        questions_data = validated_data.pop("questions")
+        competition = Competition.objects.create(**validated_data)
+        for question_data in questions_data:
+            choices_data = question_data.pop("choices")
+            question = Question.objects.create(
+                competition=competition, **question_data
+            )  # Assuming a ForeignKey to Competition
+            for choice_data in choices_data:
+                Choice.objects.create(
+                    question=question, **choice_data
+                )  # Assuming a ForeignKey to Question
+        return competition

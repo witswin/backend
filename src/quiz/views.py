@@ -1,7 +1,7 @@
 from typing import Any
 from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
-
+from rest_framework.viewsets import ModelViewSet
 from django.utils import timezone
 
 from quiz.paginations import StandardResultsSetPagination
@@ -10,6 +10,7 @@ from quiz.models import Competition, Question, UserAnswer, UserCompetition
 from quiz.permissions import IsEligibleToAnswer
 from quiz.serializers import (
     CompetitionSerializer,
+    CompetitionCreateSerializer,
     QuestionSerializer,
     UserAnswerSerializer,
     UserCompetitionSerializer,
@@ -18,12 +19,19 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 
-
-class CompetitionViewList(ListAPIView):
+class CompetitionViewList(ListCreateAPIView):
     filter_backends = []
     queryset = Competition.objects.filter(is_active=True).order_by("-created_at")
     pagination_class = StandardResultsSetPagination
     serializer_class = CompetitionSerializer
+
+
+class UserCompetitionView(ModelViewSet):
+    serializer_class = CompetitionCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Competition.objects.filter(user_profile=self.request.user.profile)
 
 
 class CompetitionView(RetrieveAPIView):
@@ -44,10 +52,10 @@ class EnrollInCompetitionView(ListCreateAPIView):
     serializer_class = UserCompetitionSerializer
 
     def perform_create(self, serializer: UserCompetitionSerializer):
-        user = self.request.user.profile # type: ignore
+        user = self.request.user.profile  # type: ignore
         serializer.save(user_profile=user)
 
-        competition: Any = serializer.validated_data.get("competition") 
+        competition: Any = serializer.validated_data.get("competition")
 
         channel_layer = get_channel_layer()
 
@@ -56,9 +64,10 @@ class EnrollInCompetitionView(ListCreateAPIView):
             {"type": "increase_enrollment", "data": competition.id},
         )
 
-
     def get_queryset(self):
-        return self.queryset.filter(user_profile=self.request.user.profile) # type:ignore
+        return self.queryset.filter(
+            user_profile=self.request.user.profile
+        )  # type:ignore
 
 
 class UserAnswerView(ListCreateAPIView):
@@ -67,11 +76,8 @@ class UserAnswerView(ListCreateAPIView):
     filter_backends = [NestedCompetitionFilter]
     queryset = UserAnswer.objects.all()
 
-
     def get_queryset(self):
-        return self.queryset.filter(
-            competition__start_at__gte=timezone.now()
-        )
+        return self.queryset.filter(competition__start_at__gte=timezone.now())
 
     def perform_create(self, serializer):
         serializer.save()
