@@ -39,3 +39,9 @@ class UserProfile(models.Model):
 
     def __str__(self) -> str:
         return self.username or self.wallet_address
+
+
+class PrivyProfile(models.Model):
+    id = models.CharField(primary_key=True, unique=True, max_length=300)
+    profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)

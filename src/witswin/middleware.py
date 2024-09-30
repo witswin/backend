@@ -6,9 +6,16 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework.authtoken.models import Token
 from channels.db import database_sync_to_async
 
+from authentication.auth import PrivyJWTAuthentication
+
 
 @database_sync_to_async
 def get_user_from_basic_auth(tk: str):
+    if tk.count(".") > 1:
+        (user, token) = PrivyJWTAuthentication().resolve_from_token(tk)
+
+        return user
+
     try:
         token = Token.objects.filter(key=tk.strip().replace("'", "")).first()
 

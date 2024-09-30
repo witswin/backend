@@ -29,6 +29,7 @@ pillow==10.4.0
 channels[daphne]==4.1
 channels_redis==4.2
 django-cloudflare-images~=0.6.0
+PyJWT==2.9
 python-decouple==3.8
 psycopg[binary]==3.2.2
 whitenoise[gzip]==6.1.0
