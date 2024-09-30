@@ -588,6 +588,59 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
             "User 1 is allowed to participate",
         )
 
+    def test_enroll_last_question_wrong(self):
+        user1 = self.create_user_profile("ali", "0xFD")
+        user2 = self.create_user_profile("mamad", "0x862")
+        user3 = self.create_user_profile("mamadreza", "0x862FA")
+
+        user_enroll1 = self.enroll_user(user1, self.competition)
+        user_enroll2 = self.enroll_user(user2, self.competition)
+
+        questions_list = list(self.competition.questions.all())
+        for question in questions_list[:-1]:
+            answer = self.create_answer(
+                user_enroll1,
+                question,
+                CORRECT_CHOICE_INDEX,
+            )
+
+        answer = self.create_answer(
+            user_enroll1,
+            questions_list[-1],
+            0,
+        )
+
+        self.update_quiz_start_at(
+            timezone.now()
+            - timezone.timedelta(
+                seconds=(
+                    (REST_BETWEEN_EACH_QUESTION_SECOND + ANSWER_TIME_SECOND)
+                    * self.competition.questions.count()
+                )
+                + 3
+            )
+        )
+
+        question_state = get_quiz_question_state(self.competition)
+
+        self.assertEqual(
+            question_state,
+            self.competition.questions.count(),
+            "Must be at last question",
+        )
+
+        participants = get_round_participants(
+            self.competition, self.get_competition_participants(), question_state
+        )
+
+        print(question_state)
+
+        losers = get_previous_round_losses(
+            self.competition, self.get_competition_participants(), question_state
+        )
+        self.assertEqual(participants, 0, "All answered wrong")
+        self.assertEqual(losers, 1, "One player lost at last question")
+
 
 class QuizConsumerTestCase(TestCase):
 

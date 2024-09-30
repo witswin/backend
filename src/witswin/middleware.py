@@ -43,17 +43,15 @@ class BasicTokenHeaderAuthentication:
 
         query_params = scope["query_string"].decode("utf-8")
 
-        print(query_params)
-
-        if not headers.get(b"cookie"):
-            return AnonymousUser()
-
-        cookie.load(headers[b"cookie"].decode("utf-8"))
-        if cookie.get("userToken") or cookie.get("ws_session"):
-            scope["user"] = await get_user_from_basic_auth(cookie.get("userToken").value or cookie.get("ws_session").value)  # type: ignore
-
-        elif "auth" in query_params:
+        if "auth" in query_params:
             scope["user"] = await get_user_from_basic_auth(query_params.split("=")[1])
+
+        elif headers.get(b"cookie"):
+            scope["user"] = AnonymousUser()
+
+            cookie.load(headers[b"cookie"].decode("utf-8"))
+            if cookie.get("userToken") or cookie.get("ws_session"):
+                scope["user"] = await get_user_from_basic_auth(cookie.get("userToken").value or cookie.get("ws_session").value)  # type: ignore
         else:
             scope["user"] = AnonymousUser()
 

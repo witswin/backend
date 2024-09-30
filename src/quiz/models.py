@@ -118,6 +118,18 @@ class Competition(models.Model):
     def can_be_shown(self):
         return self.start_at <= timezone.now()
 
+    @property
+    def is_finished(self):
+        return (
+            not self.is_in_progress
+            and self.start_at
+            + timezone.timedelta(
+                seconds=self.questions.count()
+                * (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+            )
+            <= timezone.now()
+        )
+
 
 class UserCompetitionManager(models.Manager):
     def is_eligible(self, competition: Competition):

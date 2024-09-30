@@ -98,14 +98,20 @@ def get_round_participants(
     total_questions = competition.questions.count()
     question_number = min(question_number, total_questions)
 
+    if competition.is_finished:
+        question_number += 1
+
     return (
         total_participants.annotate(
             correct_answer_count=Count(
                 "users_answer",
                 filter=Q(users_answer__selected_choice__is_correct=True),
-            )
+            ),
         )
-        .filter(correct_answer_count__gte=question_number - 1)
+        .filter(
+            correct_answer_count__gte=question_number - 1,
+            # incorrect_answer_count=0,
+        )
         .distinct()
         .count()
     )
@@ -116,6 +122,7 @@ def get_previous_round_losses(
     total_participants: BaseManager[UserCompetition],
     question_number: int,
 ):
+
     if competition.can_be_shown:
         participating_count = get_round_participants(
             competition, total_participants, question_number

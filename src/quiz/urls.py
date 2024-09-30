@@ -1,4 +1,5 @@
 from django.urls import path
+from rest_framework.routers import DefaultRouter
 
 from quiz.views import (
     CompetitionView,
@@ -6,7 +7,13 @@ from quiz.views import (
     EnrollInCompetitionView,
     QuestionView,
     UserAnswerView,
+    UserCompetitionView,
 )
+
+
+router = DefaultRouter()
+
+router.register("dashboard/competitions", UserCompetitionView, "user-competition")
 
 urlpatterns = [
     path("competitions/", CompetitionViewList.as_view(), name="competition-list"),
@@ -22,7 +29,7 @@ urlpatterns = [
         UserAnswerView.as_view(),
         name="user-competition-answers",
     ),
-]
+] + router.urls
 
 
 app_name = "QUIZ"

@@ -3,8 +3,12 @@ name: "wits"
 services:
 
   celery:
-    build: .
-    command: celery -A witswin worker --beat --concurrency 1 -l INFO 
+    image: alimaktabi55/wits:v1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    command: python -m celery -A witswin worker --beat --concurrency 1 -l INFO 
     volumes:
       - ./src/:/usr/src/app
     depends_on:
@@ -20,10 +24,15 @@ services:
       - base
 
   app:
+    image: alimaktabi55/wits:v1.0
+ 
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
     command: python manage.py runserver 0.0.0.0:4444
     environment:
       - FIELD_KEY=${FIELD_KEY}
@@ -58,6 +67,12 @@ services:
       - base
     ports:
       - 5432:5432
+      
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:6.2-alpine
@@ -75,9 +90,6 @@ volumes:
   cache:
     driver: local
 
-
 networks:
   base:
-    name: base
-    external: true
     driver: bridge

@@ -53,7 +53,8 @@ class QuizListConsumer(BaseJsonConsumer):
     @database_sync_to_async
     def get_quiz_list(self):
         return CompetitionSerializer(
-            Competition.objects.filter(is_active=True), many=True
+            Competition.objects.filter(is_active=True).order_by("-created_at"),
+            many=True,
         ).data
 
     @database_sync_to_async
@@ -62,7 +63,8 @@ class QuizListConsumer(BaseJsonConsumer):
             return []
 
         return UserCompetitionSerializer(
-            UserCompetition.objects.filter(user_profile=self.user_profile), many=True
+            UserCompetition.objects.filter(user_profile=self.user_profile),
+            many=True,
         ).data
 
     async def connect(self):

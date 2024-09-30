@@ -1,3 +1,3 @@
 #!/bin/sh
 
-celery -A witswin worker --beat --concurrency 1 -l INFO 
+pypy3 -m celery -A witswin worker --beat --concurrency 1 -l INFO 
