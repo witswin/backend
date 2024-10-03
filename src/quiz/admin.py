@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from quiz.models import Choice, Competition, Question, UserAnswer, UserCompetition, Sponsor
+from quiz.models import (
+    Choice,
+    Competition,
+    Question,
+    UserAnswer,
+    UserCompetition,
+    Sponsor,
+    Hint,
+    HintAchivement,
+)
 
 
 class CompetitionAdmin(admin.ModelAdmin):

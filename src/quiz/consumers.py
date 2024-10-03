@@ -21,6 +21,7 @@ from quiz.utils import (
 )
 from djangorestframework_camel_case.render import CamelCaseJSONRenderer
 from .models import Competition, Question, Choice, UserCompetition, UserAnswer
+from django.core.cache import cache
 
 import json
 import logging
@@ -30,6 +31,15 @@ logger = logging.getLogger(__name__)
 
 
 class BaseJsonConsumer(AsyncJsonWebsocketConsumer):
+
+    async def disconnect(self, close_code):
+        await self.close()
+        if not self.channel_layer:
+            return
+
+        await self.channel_layer.group_discard(
+            self.competition_group_name, self.channel_name
+        )
 
     async def send_json(self, content, close=False):
         """
@@ -127,7 +137,9 @@ class QuizConsumer(BaseJsonConsumer):
             user_competition__user_profile=self.user_profile,
         )
 
-        diff = get_quiz_question_state(self.competition) - 1 - answers.count()
+        question_state = get_quiz_question_state(self.competition)
+
+        diff = question_state - 1 - answers.count()
         missed_answers = []
 
         if diff > 0:
@@ -138,6 +150,7 @@ class QuizConsumer(BaseJsonConsumer):
                 answer = UserAnswer(
                     user_competition=self.user_competition, question=question, id=-1
                 )
+
                 missed_answers.append(answer)
 
         serialized_answers = UserAnswerSerializer(
@@ -348,14 +361,10 @@ class QuizConsumer(BaseJsonConsumer):
         else:
             await self.finish_quiz(None)
 
-    async def disconnect(self, close_code):
-        await self.close()
-        if not self.channel_layer:
-            return
+    async def send_correct_answer(self, event):
+        data = event["data"]
 
-        await self.channel_layer.group_discard(
-            self.competition_group_name, self.channel_name
-        )
+        await self.send_json({"type": "correct_answer", "data": data})
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -418,37 +427,18 @@ class QuizConsumer(BaseJsonConsumer):
                 )
 
         except Exception as e:
-            logger.warn(e)
-
-    async def quiz_message(self, event):
-        message = event["message"]
-
-        await self.send(text_data=json.dumps({"message": message}))
+            logger.warning(e)
 
     @database_sync_to_async
     def save_answer(self, question_id, selected_choice_id):
         question: Question = Question.objects.can_be_shown.get(pk=question_id)
-        selected_choice = Choice.objects.filter(pk=selected_choice_id).first()
         user_competition = self.user_competition
+        answers = cache.get(f"question_{question.pk}_answers", {})
 
-        answer = UserAnswer.objects.create(
-            user_competition=user_competition,
-            question=question,
-            selected_choice_id=selected_choice_id,
-        )
+        answers[user_competition.pk] = selected_choice_id
 
-        if selected_choice and selected_choice.is_correct is True:
-            correct_choice = selected_choice_id
-        else:
-            correct_choice = (
-                Choice.objects.filter(question=question, is_correct=True).get().pk
-            )
+        cache.set(f"question_{question.pk}_answers", answers)
 
         return {
-            "is_correct": selected_choice.is_correct if selected_choice else False,
-            "answer": UserAnswerSerializer(
-                instance=answer, context={"create": True}
-            ).data,
-            "question_number": question.number,
-            "correct_choice": correct_choice,
+            "selected_choice_id": selected_choice_id,
         }

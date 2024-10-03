@@ -4,7 +4,6 @@ from django.db.models import Count, Q
 from django.db.models.manager import BaseManager
 
 from authentication.models import UserProfile
-from quiz.constants import ANSWER_TIME_SECOND, REST_BETWEEN_EACH_QUESTION_SECOND
 from quiz.models import Competition, UserCompetition
 
 
@@ -59,7 +58,7 @@ def get_quiz_question_state(competition: Competition):
     return min(
         math.floor(
             (timezone.now() - start_at).seconds
-            / (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+            / (competition.question_time_seconds + competition.rest_time_seconds)
         )
         + 1,
         competition.questions.count(),
@@ -80,7 +79,7 @@ def is_competition_finished(competition: Competition):
     return (
         math.floor(
             (timezone.now() - start_at).seconds
-            / (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+            / (competition.question_time_seconds + competition.rest_time_seconds)
         )
         + 1
         > competition.questions.count()

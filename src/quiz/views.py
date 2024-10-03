@@ -55,7 +55,16 @@ class EnrollInCompetitionView(ListCreateAPIView):
         user = self.request.user.profile  # type: ignore
         serializer.save(user_profile=user)
 
+        instance = serializer.instance
+
         competition: Any = serializer.validated_data.get("competition")
+
+        hints = competition.builtin_hints
+
+        for hint in hints[: competition.hint_count]:
+            instance.registered_hints.add(hint)
+
+        instance.save()
 
         channel_layer = get_channel_layer()
 

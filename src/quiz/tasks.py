@@ -2,17 +2,14 @@ import json
 import time
 
 from celery import shared_task
+from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q
 from django.utils import timezone
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from quiz.constants import (
-    ANSWER_TIME_SECOND,
-    REST_BETWEEN_EACH_QUESTION_SECOND,
-)
 from quiz.contracts import ContractManager, SafeContractException
-from quiz.models import Competition, Question, UserCompetition
+from quiz.models import Competition, Question, UserAnswer, UserCompetition
 from quiz.serializers import QuestionSerializer
 from quiz.utils import get_quiz_question_state
 
@@ -114,7 +111,9 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
         {"type": "send_question", "data": json.dumps(data, cls=DjangoJSONEncoder)},
     )
 
-    time.sleep(ANSWER_TIME_SECOND)
+    cache.set(f"question_{question.pk}_answers", {}, timeout=60)
+
+    time.sleep(competition.question_time_seconds)
 
     def send_quiz_stats():
         async_to_sync(channel_layer.group_send)(  # type: ignore
@@ -124,7 +123,37 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
 
     threading.Timer(1.0, send_quiz_stats).start()
 
-    return REST_BETWEEN_EACH_QUESTION_SECOND
+    def insert_question_answers():
+        answers = cache.get(f"question_{question.pk}_answers", {})
+        answer_instances = []
+        print(answers)
+        for user_competition_pk, selected_choice_id in answers.items():
+            answer_instances.append(
+                UserAnswer(
+                    user_competition_id=user_competition_pk,
+                    question=question,
+                    selected_choice_id=selected_choice_id,
+                )
+            )
+
+        UserAnswer.objects.bulk_create(answer_instances)
+
+    correct_answer = question.choices.filter(is_correct=True).first()
+    async_to_sync(channel_layer.group_send)(  # type: ignore
+        f"quiz_{competition.pk}",
+        {
+            "type": "send_correct_answer",
+            "data": {
+                "answer_id": correct_answer.pk,
+                "question_number": question.number,
+                "question_id": question.pk,
+            },
+        },
+    )
+
+    threading.Timer(0, insert_question_answers).start()
+
+    return competition.rest_time_seconds
 
 
 @shared_task(bind=True)

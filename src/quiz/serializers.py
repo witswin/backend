@@ -9,6 +9,8 @@ from quiz.models import (
     Sponsor,
     UserAnswer,
     UserCompetition,
+    Hint,
+    HintAchivement,
 )
 from quiz.utils import is_user_eligible_to_participate
 
@@ -25,6 +27,12 @@ class SmallQuestionSerializer(serializers.ModelSerializer):
         fields = ("pk", "number")
 
 
+class HintSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hint
+        fields = "__all__"
+
+
 class CompetitionSerializer(serializers.ModelSerializer):
     questions = SmallQuestionSerializer(many=True, read_only=True)
     sponsors = SponsorSerializer(many=True, read_only=True)
@@ -32,6 +40,7 @@ class CompetitionSerializer(serializers.ModelSerializer):
         source="participants.count", read_only=True
     )
     user_profile = CurrentUserProfileDefault()
+    built_in_hints = HintSerializer(many=True, read_only=True)
 
     class Meta:
         model = Competition
@@ -162,14 +171,19 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
 
 
 class UserCompetitionSerializer(serializers.ModelSerializer):
-    competition = CompetitionField(
-        queryset=Competition.objects.not_started.filter(is_active=True)
-    )
+    registered_hints = HintSerializer(many=True, read_only=True)
 
     class Meta:
         model = UserCompetition
         fields = "__all__"
-        read_only_fields = ["pk", "user_profile", "is_winner", "amount_won", "tx_hash"]
+        read_only_fields = [
+            "pk",
+            "registered_hints",
+            "user_profile",
+            "is_winner",
+            "amount_won",
+            "tx_hash",
+        ]
 
     def create(self, validated_data):
         competition = validated_data.get("competition")
@@ -193,11 +207,11 @@ class UserCompetitionField(serializers.PrimaryKeyRelatedField):
 
 
 class UserAnswerSerializer(serializers.ModelSerializer):
-    user_competition = UserCompetitionField(
-        queryset=UserCompetition.objects.filter(
-            competition__is_active=True,
-        )
-    )
+    # user_competition = UserCompetitionField(
+    #     queryset=UserCompetition.objects.filter(
+    #         competition__is_active=True,
+    #     )
+    # )
     selected_choice = ChoiceField(queryset=Choice.objects.all())
 
     class Meta:
