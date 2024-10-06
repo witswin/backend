@@ -32,10 +32,11 @@ class HintSerializer(serializers.ModelSerializer):
         model = Hint
         fields = "__all__"
 
+
 class HintAchivementSerializer(serializers.ModelSerializer):
     class Meta:
         model = HintAchivement
-        fields = ("is_used", "hint", "used_at", "created_at")
+        fields = ("pk", "is_used", "hint", "used_at", "created_at")
 
 
 class CompetitionSerializer(serializers.ModelSerializer):

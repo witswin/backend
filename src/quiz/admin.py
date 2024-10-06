@@ -88,3 +88,6 @@ admin.site.register(Choice, ChoiceAdmin)
 admin.site.register(UserAnswer, UserAnswerAdmin)
 admin.site.register(UserCompetition, UserCompetitionAdmin)
 admin.site.register(Sponsor)
+
+admin.site.register(Hint)
+admin.site.register(HintAchivement)

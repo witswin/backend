@@ -293,7 +293,7 @@ class HintAchivement(models.Model):
     hint = models.ForeignKey(Hint, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
-    params = models.JSONField(default=dict)
+    params = models.JSONField(default=dict, blank=True, null=True)
     used_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):

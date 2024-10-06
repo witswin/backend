@@ -122,7 +122,7 @@ class UserAnswerView(ListCreateAPIView):
 class UserHintsView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = HintAchivementSerializer
-    queryset = HintAchivement.objects.all()
+    queryset = HintAchivement.objects.order_by("is_used")
 
     def get_queryset(self):
         return self.queryset.filter(user_profile=self.request.user.profile)
