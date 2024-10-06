@@ -32,6 +32,11 @@ class HintSerializer(serializers.ModelSerializer):
         model = Hint
         fields = "__all__"
 
+class HintAchivementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HintAchivement
+        fields = ("is_used", "hint", "used_at", "created_at")
+
 
 class CompetitionSerializer(serializers.ModelSerializer):
     questions = SmallQuestionSerializer(many=True, read_only=True)
@@ -172,6 +177,9 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
 
 class UserCompetitionSerializer(serializers.ModelSerializer):
     registered_hints = HintSerializer(many=True, read_only=True)
+    user_hints = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=HintAchivement.objects.all(), write_only=True
+    )
 
     class Meta:
         model = UserCompetition
@@ -179,6 +187,7 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "pk",
             "registered_hints",
+            "user_hints",
             "user_profile",
             "is_winner",
             "amount_won",

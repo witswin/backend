@@ -281,6 +281,7 @@ class Hint(models.Model):
     hint_type = models.CharField(max_length=255, choices=HintType.choices)
     title = models.CharField(max_length=255)
     description = models.TextField()
+    is_active = models.BooleanField(default=True)
     icon = CloudflareImagesField(blank=True, null=True)
 
     def __str__(self):

@@ -1,12 +1,21 @@
 from typing import Any
 from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
+from rest_framework import status
 from django.utils import timezone
 
 from quiz.paginations import StandardResultsSetPagination
 from quiz.filters import CompetitionFilter, NestedCompetitionFilter
-from quiz.models import Competition, Question, UserAnswer, UserCompetition
+from quiz.models import (
+    Competition,
+    Question,
+    UserAnswer,
+    UserCompetition,
+    Hint,
+    HintAchivement,
+)
 from quiz.permissions import IsEligibleToAnswer
 from quiz.serializers import (
     CompetitionSerializer,
@@ -14,6 +23,8 @@ from quiz.serializers import (
     QuestionSerializer,
     UserAnswerSerializer,
     UserCompetitionSerializer,
+    HintAchivementSerializer,
+    HintSerializer,
 )
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -61,8 +72,26 @@ class EnrollInCompetitionView(ListCreateAPIView):
 
         hints = competition.builtin_hints
 
-        for hint in hints[: competition.hint_count]:
-            instance.registered_hints.add(hint)
+        user_hints = serializer.validated_data.get("user_hints").filter(
+            user_profile=user,
+            is_used=False,
+            hint__pk__in=competition.allotted_hints,
+        )
+
+        if competition.participants.count() >= competition.max_participants:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={"message": "You have reached the maximum number of participants"},
+            )
+
+        for hint in (hints + user_hints)[: competition.hint_count]:
+            if type(hint) == HintAchivement:
+                hint.is_used = True
+                hint.used_at = timezone.now()
+                hint.save()
+                instance.registered_hints.add(hint.hint)
+            else:
+                instance.registered_hints.add(hint)
 
         instance.save()
 
@@ -74,9 +103,7 @@ class EnrollInCompetitionView(ListCreateAPIView):
         )
 
     def get_queryset(self):
-        return self.queryset.filter(
-            user_profile=self.request.user.profile
-        )  # type:ignore
+        return self.queryset.filter(user_profile=self.request.user.profile)
 
 
 class UserAnswerView(ListCreateAPIView):
@@ -90,3 +117,18 @@ class UserAnswerView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+class UserHintsView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = HintAchivementSerializer
+    queryset = HintAchivement.objects.all()
+
+    def get_queryset(self):
+        return self.queryset.filter(user_profile=self.request.user.profile)
+
+
+class HintsView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = HintSerializer
+    queryset = Hint.objects.filter(is_active=True)
