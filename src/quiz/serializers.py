@@ -1,5 +1,7 @@
 import random
+from typing import Any
 
+from django.utils import timezone
 from rest_framework import serializers
 from core.fields import CurrentUserProfileDefault
 from quiz.models import (
@@ -11,6 +13,7 @@ from quiz.models import (
     UserCompetition,
     Hint,
     HintAchivement,
+    CompetitionHint,
 )
 from quiz.utils import is_user_eligible_to_participate
 
@@ -33,6 +36,14 @@ class HintSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class CompetitionHintSerializer(serializers.ModelSerializer):
+    hint = HintSerializer()
+
+    class Meta:
+        model = CompetitionHint
+        exclude = ("created_at", "competition")
+
+
 class HintAchivementSerializer(serializers.ModelSerializer):
     class Meta:
         model = HintAchivement
@@ -46,7 +57,11 @@ class CompetitionSerializer(serializers.ModelSerializer):
         source="participants.count", read_only=True
     )
     user_profile = CurrentUserProfileDefault()
-    built_in_hints = HintSerializer(many=True, read_only=True)
+    built_in_hints = CompetitionHintSerializer(
+        many=True, read_only=True, source="competitionhint_set"
+    )
+
+    allowed_hint_types = HintSerializer(many=True, read_only=True)
 
     class Meta:
         model = Competition
@@ -199,8 +214,42 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
         competition = validated_data.get("competition")
 
         validated_data["hint_count"] = competition.hint_count
+        competition: Any = validated_data.get("competition")
 
-        return super().create(validated_data)
+        builtin_hints = competition.competitionhint_set.all()
+        allowed_user_hints = competition.allowed_hint_types.all()
+
+        user_hints = HintAchivement.objects.filter(
+            user_profile=validated_data.get("user_profile"),
+            is_used=False,
+            hint__pk__in=allowed_user_hints,
+            pk__in=validated_data.pop("user_hints"),
+        )
+
+        instance = super().create(validated_data)
+
+        total_hints_to_register = []
+
+        max_hint_count = competition.hint_count
+
+        combined_hints = list(builtin_hints) + list(user_hints)
+
+        for hint in combined_hints[:max_hint_count]:
+            if isinstance(hint, HintAchivement):
+                hint.is_used = True
+                hint.used_at = timezone.now()
+                hint.save()
+                instance.registered_hints.add(hint.hint)
+            else:
+                for _ in range(hint.count):
+                    instance.registered_hints.add(hint.hint)
+
+        if len(total_hints_to_register) > max_hint_count:
+            total_hints_to_register = total_hints_to_register[:max_hint_count]
+
+        instance.save()
+
+        return instance
 
 
 class UserCompetitionField(serializers.PrimaryKeyRelatedField):

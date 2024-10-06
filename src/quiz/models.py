@@ -99,11 +99,16 @@ class Competition(models.Model):
     hint_count = models.PositiveIntegerField(default=1)
     question_time_seconds = models.PositiveIntegerField(default=14)
     rest_time_seconds = models.PositiveIntegerField(default=9)
-    allowed_hint_types: models.QuerySet["Hint"] = models.ManyToManyField(
-        "Hint", related_name="allowed_competitions", blank=True
+    allowed_hint_types = models.ManyToManyField(
+        "Hint",
+        related_name="allowed_competitions",
+        blank=True,
     )
-    built_in_hints: models.QuerySet["Hint"] = models.ManyToManyField(
-        "Hint", related_name="built_in_competitions", blank=True
+    built_in_hints = models.ManyToManyField(
+        "Hint",
+        through="CompetitionHint",
+        related_name="built_in_competitions",
+        blank=True,
     )
 
     def __str__(self):
@@ -271,6 +276,22 @@ class UserAnswer(models.Model):
             f"{self.user_competition.user_profile} "
             f"- {self.user_competition.competition.title} - {self.question.number}"
         )
+
+
+class CompetitionHint(models.Model):
+    competition = models.ForeignKey("Competition", on_delete=models.CASCADE)
+    hint = models.ForeignKey("Hint", on_delete=models.CASCADE)
+    count = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            "competition",
+            "hint",
+        )
+
+    def __str__(self):
+        return f"{self.competition} - {self.hint} ({self.count})"
 
 
 class Hint(models.Model):

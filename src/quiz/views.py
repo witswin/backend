@@ -70,28 +70,17 @@ class EnrollInCompetitionView(ListCreateAPIView):
 
         competition: Any = serializer.validated_data.get("competition")
 
-        hints = competition.builtin_hints
-
-        user_hints = serializer.validated_data.get("user_hints").filter(
-            user_profile=user,
-            is_used=False,
-            hint__pk__in=competition.allotted_hints,
-        )
-
         if competition.participants.count() >= competition.max_participants:
             return Response(
                 status=status.HTTP_400_BAD_REQUEST,
                 data={"message": "You have reached the maximum number of participants"},
             )
 
-        for hint in (hints + user_hints)[: competition.hint_count]:
-            if type(hint) == HintAchivement:
-                hint.is_used = True
-                hint.used_at = timezone.now()
-                hint.save()
-                instance.registered_hints.add(hint.hint)
-            else:
-                instance.registered_hints.add(hint)
+        if competition.participants.count() >= competition.max_participants:
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={"message": "You have reached the maximum number of participants"},
+            )
 
         instance.save()
 
