@@ -1,6 +1,7 @@
 from django.core.exceptions import ObjectDoesNotExist
 from quiz.models import Competition, UserCompetition, UserAnswer, Question
 from authentication.models import UserProfile
+from django.core.serializers.json import DjangoJSONEncoder
 from quiz.serializers import UserAnswerSerializer, QuestionSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -11,6 +12,8 @@ from quiz.utils import (
     get_previous_round_losses,
 )
 from collections import Counter
+
+import json
 
 
 class CompetitionService:
@@ -241,10 +244,10 @@ class CompetitionBroadcaster:
             {"type": "update_competition_data", "data": competition.pk},
         )
 
-    def broadcast_competition_stats(self, competition: Competition):
+    def broadcast_competition_stats(self, competition: Competition, state=None):
         async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_{competition.pk}",
-            {"type": "send_quiz_stats", "data": None},
+            {"type": "send_quiz_stats", "data": state},
         )
 
     def broadcast_question(self, competition: Competition, question: Question):
@@ -262,7 +265,11 @@ class CompetitionBroadcaster:
         )
 
     def broadcast_correct_answer(
-        self, answer_id: int, question_id: int, question_number: int
+        self,
+        competition: Competition,
+        answer_id: int,
+        question_id: int,
+        question_number: int,
     ):
         async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_{competition.pk}",

@@ -110,10 +110,7 @@ def evaluate_state(
     time.sleep(competition.question_time_seconds)
 
     def send_quiz_stats():
-        async_to_sync(channel_layer.group_send)(  # type: ignore
-            f"quiz_{competition.pk}",
-            {"type": "send_quiz_stats", "data": question_state + 1},
-        )
+        broadcaster.broadcast_competition_stats(competition, question_state + 1)
 
     threading.Timer(1.0, send_quiz_stats).start()
 
@@ -134,7 +131,7 @@ def evaluate_state(
 
     correct_answer = question.choices.filter(is_correct=True).first()
     broadcaster.broadcast_correct_answer(
-        correct_answer.pk, question.number, question.pk
+        competition, correct_answer.pk, question.number, question.pk
     )
 
     threading.Timer(0, insert_question_answers).start()
