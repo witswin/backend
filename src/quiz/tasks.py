@@ -103,12 +103,7 @@ def evaluate_state(
 
     question = Question.objects.get(competition=competition, number=question_state)
 
-    data = QuestionSerializer(instance=question).data
-
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_{competition.pk}",
-        {"type": "send_question", "data": json.dumps(data, cls=DjangoJSONEncoder)},
-    )
+    broadcaster.broadcast_question(question)
 
     cache.set(f"question_{question.pk}_answers", {}, timeout=60)
 

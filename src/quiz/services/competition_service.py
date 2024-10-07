@@ -1,7 +1,7 @@
 from django.core.exceptions import ObjectDoesNotExist
 from quiz.models import Competition, UserCompetition, UserAnswer, Question
 from authentication.models import UserProfile
-from quiz.serializers import UserAnswerSerializer
+from quiz.serializers import UserAnswerSerializer, QuestionSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from quiz.utils import (
@@ -26,19 +26,9 @@ class CompetitionService:
     def resolve_hint(
         self, user_competition: UserCompetition, question_id: int, hint_id: int
     ):
-        if not user_competition or user_competition.hint_count <= 0:
-            return
+        hint_service = CompetitionHintService(user_competition)
 
-        question: Question = Question.objects.get(
-            pk=question_id, competition=self.competition
-        )
-
-        user_competition.hint_count -= 1
-        user_competition.save()
-
-        return list(
-            question.choices.filter(is_hinted_choice=True).values_list("pk", flat=True)
-        )
+        return hint_service.resolve_hint(question_id, hint_id)
 
     def get_user_competition(self, profile: UserProfile) -> UserCompetition:
         return UserCompetition.objects.filter(
@@ -190,29 +180,27 @@ class CompetitionHintService:
     def get_hint(self, pk):
         return self.user_competition.registered_hints.get(pk=pk)
 
-    def resolve_hint(
-        self, hint_type, user_competition: UserCompetition, question_id: int
-    ):
+    def resolve_hint(self, question_id: int, hint_id: int):
         if (
-            user_competition.usercompetitionhint_set.filter(
-                hint_type=hint_type, is_used=False
+            self.user_competition.usercompetitionhint_set.filter(
+                hint_id=hint_id, is_used=False
             ).exists()
             is False
         ):
             return None
 
-        hint = user_competition.usercompetitionhint_set.filter(
-            hint_type=hint_type, is_used=False
+        hint = self.user_competition.usercompetitionhint_set.filter(
+            hint_id=hint_id, is_used=False
         ).first()
 
         hint.is_used = True
         hint.save()
 
         if hint_type == "stats":
-            return self.resolve_stats_hint(user_competition, question_id)
+            return self.resolve_stats_hint(self.user_competition, question_id)
 
         elif hint_type == "fifty":
-            return self.resolve_fifty_hint(user_competition, question_id)
+            return self.resolve_fifty_hint(self.user_competition, question_id)
 
     def resolve_fifty_hint(self, user_competition: UserCompetition, question_id: int):
         question: Question = Question.objects.can_be_shown.get(
@@ -244,19 +232,27 @@ class CompetitionBroadcaster:
     def broadcast_competition_deleted(self, competition: Competition):
         async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_list",
-            {"type": "delete_competition", "data": instance.pk},
+            {"type": "delete_competition", "data": competition.pk},
         )
 
     def broadcast_competition_updated(self, competition: Competition):
         async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_list",
-            {"type": "update_competition_data", "data": instance.pk},
+            {"type": "update_competition_data", "data": competition.pk},
         )
 
     def broadcast_competition_stats(self, competition: Competition):
         async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_{competition.pk}",
             {"type": "send_quiz_stats", "data": None},
+        )
+
+    def broadcast_question(self, competition: Competition, question: Question):
+        data = QuestionSerializer(instance=question).data
+
+        async_to_sync(channel_layer.group_send)(  # type: ignore
+            f"quiz_{competition.pk}",
+            {"type": "send_question", "data": json.dumps(data, cls=DjangoJSONEncoder)},
         )
 
     def broadcast_competition_finished(self, competition: Competition):

@@ -143,11 +143,11 @@ class QuizConsumer(BaseJsonConsumer):
         return self.service.get_user_competition(self.user_profile)
 
     @database_sync_to_async
-    def send_hint_question(self, question_id):
+    def send_hint_question(self, question_id: int, hint_type: str, hint_id: int):
         if not self.user_competition:
             return
 
-        return self.service.resolve_hint(self.user_competition, question_id)
+        return self.service.resolve_hint(self.user_competition, question_id, hint_id)
 
     async def send_question(self, event):
         question_data = event["data"]
@@ -249,12 +249,16 @@ class QuizConsumer(BaseJsonConsumer):
             return await self.send_json(await self.get_quiz_stats())
 
         if command == "GET_HINT":
-            hint_choices = await self.send_hint_question(args["question_id"])
+            hint_choices = await self.send_hint_question(
+                args["question_id"], args["hint_type"], args["hint_id"]
+            )
 
             await self.send_json(
                 {
                     "type": "hint_question",
+                    "hint_id": args["hint_id"],
                     "data": hint_choices,
+                    "hint_type": args["hint_type"],
                     "question_id": args["question_id"],
                 }
             )
