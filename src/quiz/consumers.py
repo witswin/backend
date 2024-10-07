@@ -155,11 +155,7 @@ class QuizConsumer(BaseJsonConsumer):
             {
                 "question": {
                     **json.loads(question_data),
-                    "is_eligible": await database_sync_to_async(
-                        lambda: is_user_eligible_to_participate(
-                            self.user_profile, self.competition
-                        )
-                    )(),
+                    "is_eligible": await self.is_user_eligible_to_participate(),
                 },
                 "type": "new_question",
             }
@@ -285,7 +281,6 @@ class QuizConsumer(BaseJsonConsumer):
 
             if command == "ANSWER":
                 is_eligible = await self.is_user_eligible_to_participate()
-
                 if is_eligible is False:
                     return
 

@@ -192,10 +192,6 @@ class UserCompetitionHint(models.Model):
     def __str__(self):
         return f"{self.user_competition} - {self.hint}"
 
-    @property
-    def is_used(self):
-        return self.used_count >= self.count
-
 
 class QuestionManager(models.Manager):
     @property

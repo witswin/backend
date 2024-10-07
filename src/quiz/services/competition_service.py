@@ -4,6 +4,12 @@ from authentication.models import UserProfile
 from quiz.serializers import UserAnswerSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from quiz.utils import (
+    is_user_eligible_to_participate,
+    get_quiz_question_state,
+    get_round_participants,
+    get_previous_round_losses,
+)
 
 
 class CompetitionService:
@@ -16,9 +22,9 @@ class CompetitionService:
         except ObjectDoesNotExist:
             raise ValueError(f"Competition with id {competition_pk} does not exist.")
 
-    def resolve_hint(self, user_competition: UserCompetition, question_id: int):
-        user_competition = user_competition
-
+    def resolve_hint(
+        self, user_competition: UserCompetition, question_id: int, hint_id: int
+    ):
         if not user_competition or user_competition.hint_count <= 0:
             return
 
@@ -109,7 +115,7 @@ class CompetitionService:
             "type": "new_question",
         }
 
-    def get_quiz_stats(self, state=None):
+    def get_quiz_stats(self, user_competition: UserCompetition, state=None):
         prize_to_win = self.competition.prize_amount
         users_participated = UserCompetition.objects.filter(
             competition=self.competition
@@ -136,9 +142,7 @@ class CompetitionService:
                 ),
                 "total_participants_count": self.competition.participants.count(),
                 "questions_count": self.competition.questions.count(),
-                "hint_count": (
-                    self.user_competition.hint_count if self.user_competition else 0
-                ),
+                "hint_count": (user_competition.hint_count if user_competition else 0),
                 "previous_round_losses": get_previous_round_losses(
                     self.competition, users_participated, question_number
                 ),
@@ -161,6 +165,10 @@ class CompetitionService:
         return {
             "selected_choice_id": selected_choice_id,
         }
+
+
+class CompetitionHintService:
+    pass
 
 
 class CompetitionBroadcaster:
