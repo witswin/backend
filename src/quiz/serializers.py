@@ -196,7 +196,7 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
     user_hints = serializers.PrimaryKeyRelatedField(
         many=True, queryset=HintAchivement.objects.all(), write_only=True
     )
-
+    
     class Meta:
         model = UserCompetition
         fields = "__all__"

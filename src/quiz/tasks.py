@@ -12,6 +12,7 @@ from quiz.contracts import ContractManager, SafeContractException
 from quiz.models import Competition, Question, UserAnswer, UserCompetition
 from quiz.serializers import QuestionSerializer
 from quiz.utils import get_quiz_question_state
+from quiz.services.competition_service import CompetitionBroadcaster
 
 import logging
 import threading
@@ -48,7 +49,9 @@ def check_competition_state(competition: Competition):
     pass
 
 
-def evaluate_state(competition: Competition, channel_layer, question_state):
+def evaluate_state(
+    competition: Competition, broadcaster: CompetitionBroadcaster, question_state
+):
 
     logger.warning(f"sending broadcast question {question_state}.")
 
@@ -94,11 +97,7 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
             competition.tx_hash = "0x00"
             competition.save()
 
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(  # type: ignore
-            f"quiz_{competition.pk}",
-            {"type": "finish_quiz", "data": {}},
-        )
+        broadcaster.broadcast_competition_finished(competition)
 
         return -1
 
@@ -139,16 +138,8 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
         UserAnswer.objects.bulk_create(answer_instances)
 
     correct_answer = question.choices.filter(is_correct=True).first()
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_{competition.pk}",
-        {
-            "type": "send_correct_answer",
-            "data": {
-                "answer_id": correct_answer.pk,
-                "question_number": question.number,
-                "question_id": question.pk,
-            },
-        },
+    broadcaster.broadcast_correct_answer(
+        correct_answer.pk, question.number, question.pk
     )
 
     threading.Timer(0, insert_question_answers).start()
@@ -157,8 +148,9 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
 
 
 @shared_task(bind=True)
-def setup_competition_to_start(self, competition_pk):
+def setup_competition_to_start(self, competition_pk: int):
     channel_layer = get_channel_layer()
+    broadcaster = CompetitionBroadcaster()
 
     try:
         competition: Competition = Competition.objects.get(pk=competition_pk)
@@ -176,13 +168,10 @@ def setup_competition_to_start(self, competition_pk):
 
     while state != "FINISHED" or rest_still > 0:
         time.sleep(rest_still)
-        rest_still = evaluate_state(competition, channel_layer, question_index)
+        rest_still = evaluate_state(competition, broadcaster, question_index)
         question_index += 1
         if rest_still == -1:
             state = "FINISHED"
             break
 
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_{competition.pk}",
-        {"type": "send_quiz_stats", "data": None},
-    )
+    broadcaster.broadcast_competition_stats(competition)

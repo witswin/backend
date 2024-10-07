@@ -170,13 +170,31 @@ class UserCompetition(models.Model):
     hint_count = models.PositiveIntegerField(default=0)
     tx_hash = models.CharField(max_length=1000, blank=True)
     users_answer: models.QuerySet
-    registered_hints = models.ManyToManyField("Hint", blank=True)
+    registered_hints = models.ManyToManyField(
+        "Hint", through="UserCompetitionHint", blank=True
+    )
 
     class Meta:
         unique_together = ("user_profile", "competition")
 
     def __str__(self):
         return f"{self.user_profile} - {self.competition.title}"
+
+
+class UserCompetitionHint(models.Model):
+    user_competition = models.ForeignKey(UserCompetition, on_delete=models.CASCADE)
+    hint = models.ForeignKey("Hint", on_delete=models.CASCADE)
+    is_used = models.BooleanField(default=False)
+    question = models.ForeignKey(
+        "Question", on_delete=models.CASCADE, blank=True, null=True
+    )
+
+    def __str__(self):
+        return f"{self.user_competition} - {self.hint}"
+
+    @property
+    def is_used(self):
+        return self.used_count >= self.count
 
 
 class QuestionManager(models.Manager):

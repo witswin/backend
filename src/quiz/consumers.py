@@ -19,6 +19,7 @@ from quiz.utils import (
     get_round_participants,
     is_user_eligible_to_participate,
 )
+from quiz.services.competition_service import CompetitionService
 from djangorestframework_camel_case.render import CamelCaseJSONRenderer
 from .models import Competition, Question, Choice, UserCompetition, UserAnswer
 from django.core.cache import cache
@@ -127,75 +128,25 @@ class QuizConsumer(BaseJsonConsumer):
     user_competition: UserCompetition
     user_profile: UserProfile
 
+    service: CompetitionService
+
     @database_sync_to_async
     def send_user_answers(self):
         if not self.user_profile:
-            return {}
+            return []
 
-        answers = UserAnswer.objects.filter(
-            user_competition__competition=self.competition,
-            user_competition__user_profile=self.user_profile,
-        )
-
-        question_state = get_quiz_question_state(self.competition)
-
-        diff = question_state - 1 - answers.count()
-        missed_answers = []
-
-        if diff > 0:
-            for i in range(diff):
-                question = Question.objects.get(
-                    number=answers.count() + i + 1, competition=self.competition
-                )
-                answer = UserAnswer(
-                    user_competition=self.user_competition, question=question, id=-1
-                )
-
-                missed_answers.append(answer)
-
-        serialized_answers = UserAnswerSerializer(
-            list(answers) + missed_answers, many=True
-        )
-
-        return list(
-            map(
-                lambda x: (
-                    x
-                    if x["selected_choice"]
-                    else {**x, "selected_choice": {"is_correct": False, "id": None}}
-                ),
-                serialized_answers.data,
-            )
-        )
+        return self.service.send_user_answers(self.user_profile, self.user_competition)
 
     @database_sync_to_async
     def resolve_user_competition(self):
-        return UserCompetition.objects.filter(
-            user_profile=self.user_profile, competition=self.competition
-        ).first()
+        return self.service.get_user_competition(self.user_profile)
 
     @database_sync_to_async
     def send_hint_question(self, question_id):
-
-        user_competition = self.user_competition
-
-        if not user_competition or user_competition.hint_count <= 0:
+        if not self.user_competition:
             return
 
-        question: Question = Question.objects.get(
-            pk=question_id, competition=self.competition
-        )
-
-        user_competition.hint_count -= 1
-        user_competition.save()
-
-        return list(
-            question.choices.filter(is_hinted_choice=True).values_list("pk", flat=True)
-        )
-
-    @database_sync_to_async
-    def get_competition(self):
-        return Competition.objects.filter(pk=self.competition_id).first()
+        return self.service.resolve_hint(self.user_competition, question_id)
 
     async def send_question(self, event):
         question_data = event["data"]
@@ -220,53 +171,17 @@ class QuizConsumer(BaseJsonConsumer):
 
     @database_sync_to_async
     def calculate_quiz_winners(self):
-        return list(
-            UserCompetition.objects.filter(is_winner=True, competition=self.competition)
-            .values("user_profile__wallet_address", "tx_hash")
-            .distinct()
-        )
+        return self.service.calculate_quiz_winners(self.user_competition)
 
     async def finish_quiz(self, event):
-
         winners = await self.calculate_quiz_winners()
-
         await self.send_json({"winners_list": winners, "type": "quiz_finish"})
 
     @database_sync_to_async
     def get_question(self, index: int):
-        instance = Question.objects.can_be_shown.filter(
-            competition__pk=self.competition_id, number=index
-        ).first()
-
-        data: Any = QuestionSerializer(instance=instance).data
-
-        return {
-            "question": {
-                **data,
-                "is_eligible": is_user_eligible_to_participate(
-                    self.user_profile, self.competition
-                ),
-            },
-            "type": "new_question",
-        }
-
-    @database_sync_to_async
-    def get_question_with_pk(self, index: int):
-        instance = Question.objects.can_be_shown.filter(
-            competition__pk=self.competition_id, pk=index
-        ).first()
-
-        data: Any = QuestionSerializer(instance=instance).data
-
-        return {
-            "question": {
-                **data,
-                "is_eligible": is_user_eligible_to_participate(
-                    self.user_profile, self.competition
-                ),
-            },
-            "type": "new_question",
-        }
+        return self.service.get_question(
+            self.user_competition, index, self.user_profile
+        )
 
     @database_sync_to_async
     def is_user_eligible_to_participate(self):
@@ -276,40 +191,7 @@ class QuizConsumer(BaseJsonConsumer):
 
     @database_sync_to_async
     def get_quiz_stats(self, state=None):
-        prize_to_win = self.competition.prize_amount
-        users_participated = UserCompetition.objects.filter(
-            competition=self.competition
-        )
-
-        question_number = state or get_quiz_question_state(self.competition)
-
-        participating_count = get_round_participants(
-            self.competition, users_participated, question_number
-        )
-
-        return {
-            "type": "quiz_stats",
-            "data": {
-                "users_participating": participating_count,
-                "prize_to_win": (
-                    prize_to_win
-                    if self.competition.split_prize is False
-                    else (
-                        prize_to_win / participating_count
-                        if participating_count > 0
-                        else 0
-                    )
-                ),
-                "total_participants_count": self.competition.participants.count(),
-                "questions_count": self.competition.questions.count(),
-                "hint_count": (
-                    self.user_competition.hint_count if self.user_competition else 0
-                ),
-                "previous_round_losses": get_previous_round_losses(
-                    self.competition, users_participated, question_number
-                ),
-            },
-        }
+        return self.service.get_quiz_stats(self.user_competition, state)
 
     async def get_current_question(self):
         competition_time = self.competition.start_at
@@ -331,11 +213,15 @@ class QuizConsumer(BaseJsonConsumer):
     def get_competition_stats(self) -> Any:
         return CompetitionSerializer(instance=self.competition).data
 
+    @database_sync_to_async
+    def resolve_service(self, competition_pk: int):
+        return CompetitionService(competition_pk)
+
     async def connect(self):
         self.competition_id = self.scope["url_route"]["kwargs"]["competition_id"]
-
+        self.service = await self.resolve_service(self.competition_id)
         self.competition_group_name = f"quiz_{self.competition_id}"
-        self.competition: Competition = await self.get_competition()
+        self.competition: Competition = self.service.competition
         self.user_profile = await self.resolve_user()
         self.user_competition = await self.resolve_user_competition()
 
@@ -347,6 +233,7 @@ class QuizConsumer(BaseJsonConsumer):
         await self.channel_layer.group_add(
             self.competition_group_name, self.channel_name
         )
+
         await self.send_json(
             {"type": "answers_history", "data": await self.send_user_answers()}
         )
@@ -373,9 +260,6 @@ class QuizConsumer(BaseJsonConsumer):
         if command == "PING":
             await self.send("PONG")
 
-        if not self.user_profile:
-            return
-
         try:
             if command == "GET_CURRENT_QUESTION":
                 await self.send_json(await self.get_current_question())
@@ -385,11 +269,6 @@ class QuizConsumer(BaseJsonConsumer):
 
             if command == "GET_STATS":
                 await self.send_json(await self.get_quiz_stats())
-
-            if command == "GET_QUESTION":
-                await self.send_json(
-                    await self.get_question_with_pk(data["args"]["index"])
-                )
 
             if command == "GET_HINT":
                 hint_choices = await self.send_hint_question(
@@ -431,14 +310,9 @@ class QuizConsumer(BaseJsonConsumer):
 
     @database_sync_to_async
     def save_answer(self, question_id, selected_choice_id):
-        question: Question = Question.objects.can_be_shown.get(pk=question_id)
-        user_competition = self.user_competition
-        answers = cache.get(f"question_{question.pk}_answers", {})
+        if not self.user_competition:
+            return {"error": "user has not joined this competition"}
 
-        answers[user_competition.pk] = selected_choice_id
-
-        cache.set(f"question_{question.pk}_answers", answers)
-
-        return {
-            "selected_choice_id": selected_choice_id,
-        }
+        return self.service.save_user_answer(
+            self.user_competition, question_id, selected_choice_id
+        )
