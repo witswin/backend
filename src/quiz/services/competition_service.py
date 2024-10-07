@@ -10,6 +10,7 @@ from quiz.utils import (
     get_round_participants,
     get_previous_round_losses,
 )
+from collections import Counter
 
 
 class CompetitionService:
@@ -166,9 +167,74 @@ class CompetitionService:
             "selected_choice_id": selected_choice_id,
         }
 
+    def get_current_question(self, user_profile: UserProfile = None):
+        competition_time = self.competition.start_at
+
+        now = timezone.now()
+
+        if now < competition_time:
+            return None
+
+        state = get_quiz_question_state(competition=self.competition)
+
+        return self.get_question(state, user_profile)
+
 
 class CompetitionHintService:
-    pass
+    def __init__(self, user_competition: UserCompetition):
+        self.user_competition = user_competition
+
+    def get_hints(self):
+        return self.user_competition.registered_hints.all()
+
+    def get_hint(self, pk):
+        return self.user_competition.registered_hints.get(pk=pk)
+
+    def resolve_hint(
+        self, hint_type, user_competition: UserCompetition, question_id: int
+    ):
+        if (
+            user_competition.usercompetitionhint_set.filter(
+                hint_type=hint_type, is_used=False
+            ).exists()
+            is False
+        ):
+            return None
+
+        hint = user_competition.usercompetitionhint_set.filter(
+            hint_type=hint_type, is_used=False
+        ).first()
+
+        hint.is_used = True
+        hint.save()
+
+        if hint_type == "stats":
+            return self.resolve_stats_hint(user_competition, question_id)
+
+        elif hint_type == "fifty":
+            return self.resolve_fifty_hint(user_competition, question_id)
+
+    def resolve_fifty_hint(self, user_competition: UserCompetition, question_id: int):
+        question: Question = Question.objects.can_be_shown.get(
+            pk=question_id, competition=self.competition
+        )
+
+        return list(
+            question.choices.filter(is_hinted_choice=True).values_list("pk", flat=True)
+        )
+
+    def resolve_stats_hint(self, user_competition: UserCompetition, question_id: int):
+        answers = cache.get(f"question_{question_id}_answers", {})
+
+        answers_count = len(answers)
+
+        answer_counts = Counter(answers.values())
+
+        for answer_id, count in answer_counts.items():
+            percentage = (count / total_answers) * 100
+            answer_percentages[answer_id] = round(percentage, 2)
+
+        return answer_percentages
 
 
 class CompetitionBroadcaster:

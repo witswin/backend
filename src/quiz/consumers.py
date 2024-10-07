@@ -21,6 +21,7 @@ from quiz.utils import (
 )
 from quiz.services.competition_service import CompetitionService
 from djangorestframework_camel_case.render import CamelCaseJSONRenderer
+from djangorestframework_camel_case.util import underscoreize
 from .models import Competition, Question, Choice, UserCompetition, UserAnswer
 from django.core.cache import cache
 
@@ -189,21 +190,9 @@ class QuizConsumer(BaseJsonConsumer):
     def get_quiz_stats(self, state=None):
         return self.service.get_quiz_stats(self.user_competition, state)
 
-    async def get_current_question(self):
-        competition_time = self.competition.start_at
-
-        now = timezone.now()
-
-        if now < competition_time:
-            return {"error": "wait for competition to begin", "data": None}
-
-        state = await database_sync_to_async(get_quiz_question_state)(
-            competition=self.competition
-        )
-
-        question = await self.get_question(state)
-
-        return question
+    @database_sync_to_async
+    def get_current_question(self):
+        return self.service.get_current_question(self.user_competition)
 
     @database_sync_to_async
     def get_competition_stats(self) -> Any:
@@ -249,59 +238,59 @@ class QuizConsumer(BaseJsonConsumer):
 
         await self.send_json({"type": "correct_answer", "data": data})
 
+    async def handle_user_command(self, command, args):
+        if command == "GET_CURRENT_QUESTION":
+            return await self.send_json(await self.get_current_question())
+
+        if command == "GET_COMPETITION":
+            return await self.send_json(await self.get_competition_stats())
+
+        if command == "GET_STATS":
+            return await self.send_json(await self.get_quiz_stats())
+
+        if command == "GET_HINT":
+            hint_choices = await self.send_hint_question(args["question_id"])
+
+            await self.send_json(
+                {
+                    "type": "hint_question",
+                    "data": hint_choices,
+                    "question_id": args["question_id"],
+                }
+            )
+
+        if command == "ANSWER":
+            is_eligible = await self.is_user_eligible_to_participate()
+            if is_eligible is False:
+                return
+
+            res = await self.save_answer(
+                args["question_id"],
+                args["selected_choice_id"],
+            )
+
+            await self.send_json(
+                {
+                    "type": "add_answer",
+                    "data": {
+                        **res,
+                        "is_eligible": res["is_correct"],
+                        "question_id": args["question_id"],
+                    },
+                }
+            )
+
     async def receive(self, text_data):
-        data = json.loads(text_data)
+        data = underscoreize(json.loads(text_data))
         command = data["command"]
 
         if command == "PING":
             await self.send("PONG")
 
         try:
-            if command == "GET_CURRENT_QUESTION":
-                await self.send_json(await self.get_current_question())
-
-            if command == "GET_COMPETITION":
-                await self.send_json(await self.get_competition_stats())
-
-            if command == "GET_STATS":
-                await self.send_json(await self.get_quiz_stats())
-
-            if command == "GET_HINT":
-                hint_choices = await self.send_hint_question(
-                    data["args"]["question_id"]
-                )
-
-                await self.send_json(
-                    {
-                        "type": "hint_question",
-                        "data": hint_choices,
-                        "question_id": data["args"]["question_id"],
-                    }
-                )
-
-            if command == "ANSWER":
-                is_eligible = await self.is_user_eligible_to_participate()
-                if is_eligible is False:
-                    return
-
-                res = await self.save_answer(  # TODO: parse parameters with django camel case
-                    data["args"]["questionId"],
-                    data["args"]["selectedChoiceId"],
-                )
-
-                await self.send_json(
-                    {
-                        "type": "add_answer",
-                        "data": {
-                            **res,
-                            "is_eligible": res["is_correct"],
-                            "question_id": data["args"]["questionId"],
-                        },
-                    }
-                )
-
+            await self.handle_user_command(command, data.get("args", {}))
         except Exception as e:
-            logger.warning(e)
+            logger.warning(f"Error while handling user command: {e}")
 
     @database_sync_to_async
     def save_answer(self, question_id, selected_choice_id):
