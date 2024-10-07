@@ -103,7 +103,7 @@ def evaluate_state(
 
     question = Question.objects.get(competition=competition, number=question_state)
 
-    broadcaster.broadcast_question(question)
+    broadcaster.broadcast_question(competition, question)
 
     cache.set(f"question_{question.pk}_answers", {}, timeout=60)
 

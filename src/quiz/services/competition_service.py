@@ -250,7 +250,7 @@ class CompetitionBroadcaster:
     def broadcast_question(self, competition: Competition, question: Question):
         data = QuestionSerializer(instance=question).data
 
-        async_to_sync(channel_layer.group_send)(  # type: ignore
+        async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_{competition.pk}",
             {"type": "send_question", "data": json.dumps(data, cls=DjangoJSONEncoder)},
         )
@@ -264,7 +264,7 @@ class CompetitionBroadcaster:
     def broadcast_correct_answer(
         self, answer_id: int, question_id: int, question_number: int
     ):
-        async_to_sync(channel_layer.group_send)(  # type: ignore
+        async_to_sync(self.channel_layer.group_send)(  # type: ignore
             f"quiz_{competition.pk}",
             {
                 "type": "send_correct_answer",
