@@ -168,7 +168,7 @@ class QuizConsumer(BaseJsonConsumer):
 
     @database_sync_to_async
     def calculate_quiz_winners(self):
-        return self.service.calculate_quiz_winners(self.user_competition)
+        return self.service.calculate_quiz_winners()
 
     async def finish_quiz(self, event):
         winners = await self.calculate_quiz_winners()
@@ -276,11 +276,7 @@ class QuizConsumer(BaseJsonConsumer):
             await self.send_json(
                 {
                     "type": "add_answer",
-                    "data": {
-                        **res,
-                        "is_eligible": res["is_correct"],
-                        "question_id": args["question_id"],
-                    },
+                    "data": res,
                 }
             )
 

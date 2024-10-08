@@ -10,6 +10,7 @@ from quiz.models import (
     Hint,
     HintAchivement,
     CompetitionHint,
+    UserCompetitionHint,
 )
 
 
@@ -100,5 +101,5 @@ admin.site.register(Sponsor)
 admin.site.register(Hint)
 admin.site.register(HintAchivement)
 
-
+admin.site.register(UserCompetitionHint)
 admin.site.register(CompetitionHint)

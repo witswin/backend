@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
 from django.utils import timezone
-from django.db.models import Prefetch
+from django.db.models import Prefetch, OuterRef
 
 from quiz.paginations import StandardResultsSetPagination
 from quiz.filters import CompetitionFilter, NestedCompetitionFilter
@@ -60,13 +60,8 @@ class QuestionView(RetrieveAPIView):
 class EnrollInCompetitionView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [CompetitionFilter]
-    queryset = UserCompetition.objects.prefetch_related(
-        Prefetch(
-            "registered_hints",
-            queryset=Hint.objects.filter(usercompetitionhint__is_used=False),
-            to_attr="filtered_hints",
-        )
-    ).all()
+    queryset = UserCompetition.objects.prefetch_related("usercompetitionhint_set")
+
     serializer_class = UserCompetitionSerializer
 
     def perform_create(self, serializer: UserCompetitionSerializer):

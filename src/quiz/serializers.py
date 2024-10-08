@@ -192,11 +192,13 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
 
 
 class UserCompetitionSerializer(serializers.ModelSerializer):
-    registered_hints = HintSerializer(many=True, read_only=True)
+    # registered_hints = HintSerializer(many=True, read_only=True)
+    registered_hints = serializers.SerializerMethodField()
+
     user_hints = serializers.PrimaryKeyRelatedField(
         many=True, queryset=HintAchivement.objects.all(), write_only=True
     )
-    
+
     class Meta:
         model = UserCompetition
         fields = "__all__"
@@ -209,6 +211,15 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
             "amount_won",
             "tx_hash",
         ]
+
+    def get_registered_hints(self, obj: UserCompetition):
+        return HintSerializer(
+            Hint.objects.filter(
+                usercompetitionhint__user_competition=obj,
+                usercompetitionhint__is_used=False,
+            ),
+            many=True,
+        ).data
 
     def create(self, validated_data):
         competition = validated_data.get("competition")

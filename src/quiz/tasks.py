@@ -2,11 +2,10 @@ import json
 import time
 
 from celery import shared_task
-from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q
 from django.utils import timezone
-from asgiref.sync import async_to_sync
+from django.core.cache import cache
 from channels.layers import get_channel_layer
 from quiz.contracts import ContractManager, SafeContractException
 from quiz.models import Competition, Question, UserAnswer, UserCompetition
@@ -107,7 +106,7 @@ def evaluate_state(
 
     cache.set(f"question_{question.pk}_answers", {}, timeout=60)
 
-    time.sleep(competition.question_time_seconds)
+    time.sleep(competition.question_time_seconds + 1.5)
 
     def send_quiz_stats():
         broadcaster.broadcast_competition_stats(competition, question_state + 1)
@@ -117,7 +116,6 @@ def evaluate_state(
     def insert_question_answers():
         answers = cache.get(f"question_{question.pk}_answers", {})
         answer_instances = []
-        print(answers)
         for user_competition_pk, selected_choice_id in answers.items():
             answer_instances.append(
                 UserAnswer(
@@ -131,17 +129,16 @@ def evaluate_state(
 
     correct_answer = question.choices.filter(is_correct=True).first()
     broadcaster.broadcast_correct_answer(
-        competition, correct_answer.pk, question.number, question.pk
+        competition, correct_answer.pk, question.pk, question.number
     )
 
     threading.Timer(0, insert_question_answers).start()
 
-    return competition.rest_time_seconds
+    return competition.rest_time_seconds - 1.5
 
 
 @shared_task(bind=True)
 def setup_competition_to_start(self, competition_pk: int):
-    channel_layer = get_channel_layer()
     broadcaster = CompetitionBroadcaster()
 
     try:

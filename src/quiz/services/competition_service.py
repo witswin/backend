@@ -1,9 +1,11 @@
+from typing import Any
 from django.core.exceptions import ObjectDoesNotExist
 from quiz.models import Competition, UserCompetition, UserAnswer, Question
 from authentication.models import UserProfile
 from django.core.serializers.json import DjangoJSONEncoder
 from quiz.serializers import UserAnswerSerializer, QuestionSerializer
 from channels.layers import get_channel_layer
+from django.utils import timezone
 from asgiref.sync import async_to_sync
 from quiz.utils import (
     is_user_eligible_to_participate,
@@ -11,6 +13,8 @@ from quiz.utils import (
     get_round_participants,
     get_previous_round_losses,
 )
+from django.core.cache import cache
+
 from collections import Counter
 
 import json
@@ -95,7 +99,7 @@ class CompetitionService:
 
     def get_question(self, number: int, user_profile=None):
         instance = Question.objects.can_be_shown.filter(
-            competition__pk=self.competition_id, number=index
+            competition__pk=self.competition_id, number=number
         ).first()
 
         data: Any = QuestionSerializer(instance=instance).data
@@ -190,34 +194,38 @@ class CompetitionHintService:
             ).exists()
             is False
         ):
-            return None
+            raise ValueError("No hints left")
 
-        hint = self.user_competition.usercompetitionhint_set.filter(
+        hint = self.user_competition.usercompetitionhint_set.get(
             hint_id=hint_id, is_used=False
-        ).first()
+        )
+
+        hint.question = Question.objects.get(pk=question_id)
 
         hint.is_used = True
         hint.save()
 
-        if hint_type == "stats":
-            return self.resolve_stats_hint(self.user_competition, question_id)
+        if hint.hint.hint_type == "stats":
+            return self.resolve_stats_hint(question_id)
 
-        elif hint_type == "fifty":
-            return self.resolve_fifty_hint(self.user_competition, question_id)
+        elif hint.hint.hint_type == "fifty":
+            return self.resolve_fifty_hint(question_id)
 
-    def resolve_fifty_hint(self, user_competition: UserCompetition, question_id: int):
+    def resolve_fifty_hint(self, question_id: int):
         question: Question = Question.objects.can_be_shown.get(
-            pk=question_id, competition=self.competition
+            pk=question_id, competition=self.user_competition.competition
         )
 
         return list(
             question.choices.filter(is_hinted_choice=True).values_list("pk", flat=True)
         )
 
-    def resolve_stats_hint(self, user_competition: UserCompetition, question_id: int):
+    def resolve_stats_hint(self, question_id: int):
         answers = cache.get(f"question_{question_id}_answers", {})
 
-        answers_count = len(answers)
+        total_answers = len(answers)
+
+        answer_percentages = {}
 
         answer_counts = Counter(answers.values())
 
