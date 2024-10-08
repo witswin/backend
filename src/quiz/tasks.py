@@ -5,16 +5,13 @@ from celery import shared_task
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Count, Q
 from django.utils import timezone
-from asgiref.sync import async_to_sync
+from django.core.cache import cache
 from channels.layers import get_channel_layer
-from quiz.constants import (
-    ANSWER_TIME_SECOND,
-    REST_BETWEEN_EACH_QUESTION_SECOND,
-)
 from quiz.contracts import ContractManager, SafeContractException
-from quiz.models import Competition, Question, UserCompetition
+from quiz.models import Competition, Question, UserAnswer, UserCompetition
 from quiz.serializers import QuestionSerializer
 from quiz.utils import get_quiz_question_state
+from quiz.services.competition_service import CompetitionBroadcaster
 
 import logging
 import threading
@@ -51,7 +48,9 @@ def check_competition_state(competition: Competition):
     pass
 
 
-def evaluate_state(competition: Competition, channel_layer, question_state):
+def evaluate_state(
+    competition: Competition, broadcaster: CompetitionBroadcaster, question_state
+):
 
     logger.warning(f"sending broadcast question {question_state}.")
 
@@ -97,39 +96,50 @@ def evaluate_state(competition: Competition, channel_layer, question_state):
             competition.tx_hash = "0x00"
             competition.save()
 
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(  # type: ignore
-            f"quiz_{competition.pk}",
-            {"type": "finish_quiz", "data": {}},
-        )
+        broadcaster.broadcast_competition_finished(competition)
 
         return -1
 
     question = Question.objects.get(competition=competition, number=question_state)
 
-    data = QuestionSerializer(instance=question).data
+    broadcaster.broadcast_question(competition, question)
 
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_{competition.pk}",
-        {"type": "send_question", "data": json.dumps(data, cls=DjangoJSONEncoder)},
-    )
+    cache.set(f"question_{question.pk}_answers", {}, timeout=60)
 
-    time.sleep(ANSWER_TIME_SECOND)
+    time.sleep(competition.question_time_seconds + 1.5)
 
     def send_quiz_stats():
-        async_to_sync(channel_layer.group_send)(  # type: ignore
-            f"quiz_{competition.pk}",
-            {"type": "send_quiz_stats", "data": question_state + 1},
-        )
+        broadcaster.broadcast_competition_stats(competition, question_state + 1)
 
     threading.Timer(1.0, send_quiz_stats).start()
 
-    return REST_BETWEEN_EACH_QUESTION_SECOND
+    def insert_question_answers():
+        answers = cache.get(f"question_{question.pk}_answers", {})
+        answer_instances = []
+        for user_competition_pk, selected_choice_id in answers.items():
+            answer_instances.append(
+                UserAnswer(
+                    user_competition_id=user_competition_pk,
+                    question=question,
+                    selected_choice_id=selected_choice_id,
+                )
+            )
+
+        UserAnswer.objects.bulk_create(answer_instances)
+
+    correct_answer = question.choices.filter(is_correct=True).first()
+    broadcaster.broadcast_correct_answer(
+        competition, correct_answer.pk, question.pk, question.number
+    )
+
+    threading.Timer(0, insert_question_answers).start()
+
+    return competition.rest_time_seconds - 1.5
 
 
 @shared_task(bind=True)
-def setup_competition_to_start(self, competition_pk):
-    channel_layer = get_channel_layer()
+def setup_competition_to_start(self, competition_pk: int):
+    broadcaster = CompetitionBroadcaster()
 
     try:
         competition: Competition = Competition.objects.get(pk=competition_pk)
@@ -147,13 +157,10 @@ def setup_competition_to_start(self, competition_pk):
 
     while state != "FINISHED" or rest_still > 0:
         time.sleep(rest_still)
-        rest_still = evaluate_state(competition, channel_layer, question_index)
+        rest_still = evaluate_state(competition, broadcaster, question_index)
         question_index += 1
         if rest_still == -1:
             state = "FINISHED"
             break
 
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_{competition.pk}",
-        {"type": "send_quiz_stats", "data": None},
-    )
+    broadcaster.broadcast_competition_stats(competition)

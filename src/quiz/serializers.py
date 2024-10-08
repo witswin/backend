@@ -1,5 +1,7 @@
 import random
+from typing import Any
 
+from django.utils import timezone
 from rest_framework import serializers
 from core.fields import CurrentUserProfileDefault
 from quiz.models import (
@@ -9,6 +11,10 @@ from quiz.models import (
     Sponsor,
     UserAnswer,
     UserCompetition,
+    Hint,
+    HintAchivement,
+    CompetitionHint,
+    UserCompetitionHint,
 )
 from quiz.utils import is_user_eligible_to_participate
 
@@ -25,6 +31,26 @@ class SmallQuestionSerializer(serializers.ModelSerializer):
         fields = ("pk", "number")
 
 
+class HintSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hint
+        fields = "__all__"
+
+
+class CompetitionHintSerializer(serializers.ModelSerializer):
+    hint = HintSerializer()
+
+    class Meta:
+        model = CompetitionHint
+        exclude = ("created_at", "competition")
+
+
+class HintAchivementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HintAchivement
+        fields = ("pk", "is_used", "hint", "used_at", "created_at")
+
+
 class CompetitionSerializer(serializers.ModelSerializer):
     questions = SmallQuestionSerializer(many=True, read_only=True)
     sponsors = SponsorSerializer(many=True, read_only=True)
@@ -32,6 +58,11 @@ class CompetitionSerializer(serializers.ModelSerializer):
         source="participants.count", read_only=True
     )
     user_profile = CurrentUserProfileDefault()
+    built_in_hints = CompetitionHintSerializer(
+        many=True, read_only=True, source="competitionhint_set"
+    )
+
+    allowed_hint_types = HintSerializer(many=True, read_only=True)
 
     class Meta:
         model = Competition
@@ -162,21 +193,84 @@ class ChoiceField(serializers.PrimaryKeyRelatedField):
 
 
 class UserCompetitionSerializer(serializers.ModelSerializer):
-    competition = CompetitionField(
-        queryset=Competition.objects.not_started.filter(is_active=True)
+    # registered_hints = HintSerializer(many=True, read_only=True)
+    registered_hints = serializers.SerializerMethodField()
+
+    user_hints = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=HintAchivement.objects.all(), write_only=True
     )
 
     class Meta:
         model = UserCompetition
         fields = "__all__"
-        read_only_fields = ["pk", "user_profile", "is_winner", "amount_won", "tx_hash"]
+        read_only_fields = [
+            "pk",
+            "registered_hints",
+            "user_profile",
+            "is_winner",
+            "amount_won",
+            "tx_hash",
+        ]
+
+    def get_registered_hints(self, obj: UserCompetition):
+        return HintSerializer(
+            Hint.objects.filter(
+                usercompetitionhint__user_competition=obj,
+                usercompetitionhint__is_used=False,
+            ),
+            many=True,
+        ).data
 
     def create(self, validated_data):
         competition = validated_data.get("competition")
 
-        validated_data["hint_count"] = competition.hint_count
+        builtin_hints = competition.competitionhint_set.all()
+        allowed_user_hints = competition.allowed_hint_types.all()
 
-        return super().create(validated_data)
+        user_hints = HintAchivement.objects.filter(
+            user_profile=validated_data.get("user_profile"),
+            is_used=False,
+            hint__in=allowed_user_hints,
+            pk__in=map(lambda x: x.pk, validated_data.pop("user_hints")),
+        )
+
+        instance = super().create(validated_data)
+
+        max_hint_count = competition.hint_count
+
+        combined_hints = list(builtin_hints) + list(user_hints)
+
+        registered_hints = 0
+
+        for hint in combined_hints:
+            if max_hint_count <= registered_hints:
+                break
+
+            if isinstance(hint, HintAchivement):
+                hint.is_used = True
+                hint.used_at = timezone.now()
+                hint.save()
+                UserCompetitionHint.objects.create(
+                    user_competition=instance,
+                    hint=hint.hint,
+                    is_used=False,
+                    question=None,
+                )
+                instance.registered_hints.add(hint.hint)
+                registered_hints += 1
+            else:
+                registered_hints += hint.count
+                for _ in range(min(hint.count, max_hint_count - registered_hints)):
+                    UserCompetitionHint.objects.create(
+                        user_competition=instance,
+                        hint=hint.hint,
+                        is_used=False,
+                        question=None,
+                    )
+
+                    instance.registered_hints.add(hint.hint)
+
+        return instance
 
 
 class UserCompetitionField(serializers.PrimaryKeyRelatedField):
@@ -193,11 +287,11 @@ class UserCompetitionField(serializers.PrimaryKeyRelatedField):
 
 
 class UserAnswerSerializer(serializers.ModelSerializer):
-    user_competition = UserCompetitionField(
-        queryset=UserCompetition.objects.filter(
-            competition__is_active=True,
-        )
-    )
+    # user_competition = UserCompetitionField(
+    #     queryset=UserCompetition.objects.filter(
+    #         competition__is_active=True,
+    #     )
+    # )
     selected_choice = ChoiceField(queryset=Choice.objects.all())
 
     class Meta:

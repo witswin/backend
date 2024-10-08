@@ -8,6 +8,8 @@ from quiz.views import (
     QuestionView,
     UserAnswerView,
     UserCompetitionView,
+    UserHintsView,
+    HintsView,
 )
 
 
@@ -29,6 +31,8 @@ urlpatterns = [
         UserAnswerView.as_view(),
         name="user-competition-answers",
     ),
+    path("hints/", HintsView.as_view(), name="hints"),
+    path("user-hints/", UserHintsView.as_view(), name="user-hints"),
 ] + router.urls
 
 

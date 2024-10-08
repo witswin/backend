@@ -10,30 +10,21 @@ from django_celery_beat.models import (
     PeriodicTasks,
 )
 from quiz.models import Competition
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
+from quiz.services.competition_service import CompetitionBroadcaster
 
 
 @receiver(pre_delete, sender=Competition)
-def clean_competition_task(sender, instance: Competition, **kwargs):
-    channel_layer = get_channel_layer()
-
+def on_competition_delete(sender, instance: Competition, **kwargs):
     current_app.control.revoke(f"start_competition_{instance.pk}", terminate=True)  # type: ignore
 
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_list",
-        {"type": "delete_competition", "data": instance.pk},
-    )
+    CompetitionBroadcaster().broadcast_competition_deleted(instance)
 
 
 @receiver(post_save, sender=Competition)
 def trigger_competition_starter_task(sender, instance: Competition, created, **kwargs):
-    channel_layer = get_channel_layer()
-
-    async_to_sync(channel_layer.group_send)(  # type: ignore
-        f"quiz_list",
-        {"type": "update_competition_data", "data": instance.pk},
-    )
+    CompetitionBroadcaster().broadcast_competition_updated(
+        instance
+    )  # TODO: create static instance
 
     existing_task_name = f"start_competition_{instance.pk}"
 

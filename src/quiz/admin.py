@@ -1,6 +1,24 @@
 from django.contrib import admin
 
-from quiz.models import Choice, Competition, Question, UserAnswer, UserCompetition, Sponsor
+from quiz.models import (
+    Choice,
+    Competition,
+    Question,
+    UserAnswer,
+    UserCompetition,
+    Sponsor,
+    Hint,
+    HintAchivement,
+    CompetitionHint,
+    UserCompetitionHint,
+)
+
+
+class CompetitionHintInline(admin.TabularInline):
+    model = CompetitionHint
+    extra = 1
+    fields = ["hint", "count"]
+    # autocomplete_fields = ["hint"]
 
 
 class CompetitionAdmin(admin.ModelAdmin):
@@ -10,8 +28,8 @@ class CompetitionAdmin(admin.ModelAdmin):
         "details",
         "token",
     )
-
     search_fields = ("user_profile", "pk")
+    inlines = [CompetitionHintInline]
     list_filter = ()
 
 
@@ -79,3 +97,9 @@ admin.site.register(Choice, ChoiceAdmin)
 admin.site.register(UserAnswer, UserAnswerAdmin)
 admin.site.register(UserCompetition, UserCompetitionAdmin)
 admin.site.register(Sponsor)
+
+admin.site.register(Hint)
+admin.site.register(HintAchivement)
+
+admin.site.register(UserCompetitionHint)
+admin.site.register(CompetitionHint)

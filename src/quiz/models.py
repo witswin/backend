@@ -82,6 +82,7 @@ class Competition(models.Model):
     image = CloudflareImagesField(blank=True, null=True)
     shuffle_answers = models.BooleanField(default=False)
     split_prize = models.BooleanField(default=True)
+    max_participants = models.PositiveIntegerField(default=0)
 
     participants = models.ManyToManyField(
         UserProfile,
@@ -96,6 +97,19 @@ class Competition(models.Model):
     objects: CompetitionManager = CompetitionManager()
     questions: models.QuerySet["Question"]
     hint_count = models.PositiveIntegerField(default=1)
+    question_time_seconds = models.PositiveIntegerField(default=14)
+    rest_time_seconds = models.PositiveIntegerField(default=9)
+    allowed_hint_types = models.ManyToManyField(
+        "Hint",
+        related_name="allowed_competitions",
+        blank=True,
+    )
+    built_in_hints = models.ManyToManyField(
+        "Hint",
+        through="CompetitionHint",
+        related_name="built_in_competitions",
+        blank=True,
+    )
 
     def __str__(self):
         return f"{self.user_profile} - {self.title}"
@@ -107,8 +121,8 @@ class Competition(models.Model):
             + timedelta(
                 seconds=(
                     self.questions.count()
-                    * (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
-                    - REST_BETWEEN_EACH_QUESTION_SECOND
+                    * (self.question_time_seconds + self.rest_time_seconds)
+                    - self.rest_time_seconds
                 )
             )
             >= timezone.now()
@@ -125,7 +139,7 @@ class Competition(models.Model):
             and self.start_at
             + timezone.timedelta(
                 seconds=self.questions.count()
-                * (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+                * (self.question_time_seconds + self.rest_time_seconds)
             )
             <= timezone.now()
         )
@@ -138,7 +152,7 @@ class UserCompetitionManager(models.Manager):
 
         state = math.floor(
             (timezone.now() - competition.start_at).seconds
-            / (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+            / (competition.question_time_seconds + competition.rest_time_seconds)
         )
 
         return self.annotate().filter(
@@ -156,12 +170,27 @@ class UserCompetition(models.Model):
     hint_count = models.PositiveIntegerField(default=0)
     tx_hash = models.CharField(max_length=1000, blank=True)
     users_answer: models.QuerySet
+    registered_hints = models.ManyToManyField(
+        "Hint", through="UserCompetitionHint", blank=True
+    )
 
     class Meta:
         unique_together = ("user_profile", "competition")
 
     def __str__(self):
         return f"{self.user_profile} - {self.competition.title}"
+
+
+class UserCompetitionHint(models.Model):
+    user_competition = models.ForeignKey(UserCompetition, on_delete=models.CASCADE)
+    hint = models.ForeignKey("Hint", on_delete=models.CASCADE)
+    is_used = models.BooleanField(default=False)
+    question = models.ForeignKey(
+        "Question", on_delete=models.CASCADE, blank=True, null=True
+    )
+
+    def __str__(self):
+        return f"{self.user_competition} - {self.hint}"
 
 
 class QuestionManager(models.Manager):
@@ -189,17 +218,20 @@ class Question(models.Model):
             self.competition.start_at
             + timezone.timedelta(
                 seconds=(self.number - 1)
-                * (ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND)
+                * (
+                    self.competition.question_time_seconds
+                    + self.competition.rest_time_seconds
+                )
             )
             <= timezone.now()
         )
 
     @property
     def answer_can_be_shown(self):
-        answer_time = ANSWER_TIME_SECOND - 2
+        answer_time = self.competition.question_time_seconds - 2
 
         seconds = (self.number - 1) * (
-            ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND
+            self.competition.question_time_seconds + self.competition.rest_time_seconds
         ) + answer_time
 
         return (
@@ -258,3 +290,46 @@ class UserAnswer(models.Model):
             f"{self.user_competition.user_profile} "
             f"- {self.user_competition.competition.title} - {self.question.number}"
         )
+
+
+class CompetitionHint(models.Model):
+    competition = models.ForeignKey("Competition", on_delete=models.CASCADE)
+    hint = models.ForeignKey("Hint", on_delete=models.CASCADE)
+    count = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (
+            "competition",
+            "hint",
+        )
+
+    def __str__(self):
+        return f"{self.competition} - {self.hint} ({self.count})"
+
+
+class Hint(models.Model):
+    class HintType(models.TextChoices):
+        STATS = "stats", "Stats"
+        FIFTY = "fifty", "Fifty"
+
+    hint_type = models.CharField(max_length=255, choices=HintType.choices)
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    is_active = models.BooleanField(default=True)
+    icon = CloudflareImagesField(blank=True, null=True)
+
+    def __str__(self):
+        return self.hint_type
+
+
+class HintAchivement(models.Model):
+    user_profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    hint = models.ForeignKey(Hint, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+    params = models.JSONField(default=dict, blank=True, null=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user_profile} - {self.hint.hint_type}"

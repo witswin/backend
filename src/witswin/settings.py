@@ -199,6 +199,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://wits-backend-production.up.railway.app",
     "http://localhost:4444",
     "https://api.wits.win",
+    "https://4444-witswin-backend-3mdo0o7v9lr.ws-eu116.gitpod.io",
 ]
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
