@@ -7,14 +7,14 @@ def seed_builtin_hints(apps, schema_editor):
     Hint = apps.get_model("quiz", "Hint")
 
     Hint.objects.create(
-        hint_type=Hint.HintType.STATS,
+        hint_type="stats",
         title="Stats Hint",
         is_active=True,
         description="See people choices stats ",
     )
 
     Hint.objects.create(
-        hint_type=Hint.HintType.FIFTY,
+        hint_type="fifty",
         title="Fifty Hint",
         is_active=True,
         description="Remove two wrong choices",
