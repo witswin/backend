@@ -99,7 +99,7 @@ class CompetitionService:
 
     def get_question(self, number: int, user_profile=None):
         instance = Question.objects.can_be_shown.filter(
-            competition__pk=self.competition_id, number=number
+            competition=self.competition, number=number
         ).first()
 
         data: Any = QuestionSerializer(instance=instance).data
@@ -196,9 +196,9 @@ class CompetitionHintService:
         ):
             raise ValueError("No hints left")
 
-        hint = self.user_competition.usercompetitionhint_set.get(
+        hint = self.user_competition.usercompetitionhint_set.filter(
             hint_id=hint_id, is_used=False
-        )
+        ).first()
 
         hint.question = Question.objects.get(pk=question_id)
 
@@ -212,9 +212,9 @@ class CompetitionHintService:
             return self.resolve_fifty_hint(question_id)
 
     def resolve_fifty_hint(self, question_id: int):
-        question: Question = Question.objects.can_be_shown.get(
+        question: Question = Question.objects.can_be_shown.filter(
             pk=question_id, competition=self.user_competition.competition
-        )
+        ).first()
 
         return list(
             question.choices.filter(is_hinted_choice=True).values_list("pk", flat=True)
