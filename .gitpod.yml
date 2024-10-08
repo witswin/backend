@@ -7,4 +7,8 @@
 # tasks:
 #   - init: pip install -r requirements.txt
 
+ports:
+  - port: 4444
+    onOpen: open-preview
+    visibility: public
 

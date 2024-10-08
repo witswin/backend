@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Prefetch, OuterRef
 
@@ -65,26 +66,21 @@ class EnrollInCompetitionView(ListCreateAPIView):
     serializer_class = UserCompetitionSerializer
 
     def perform_create(self, serializer: UserCompetitionSerializer):
+        competition = serializer.validated_data.get("competition")
+
+        if (
+            competition.max_participants
+            and competition.participants.count() >= competition.max_participants
+        ):
+
+            raise ValidationError(
+                {
+                    "message": "This competition has reached the maximum number of participants"
+                }
+            )
+
         user = self.request.user.profile  # type: ignore
         serializer.save(user_profile=user)
-
-        instance = serializer.instance
-
-        competition: Any = serializer.validated_data.get("competition")
-
-        if competition.participants.count() >= competition.max_participants:
-            return Response(
-                status=status.HTTP_400_BAD_REQUEST,
-                data={"message": "You have reached the maximum number of participants"},
-            )
-
-        if competition.participants.count() >= competition.max_participants:
-            return Response(
-                status=status.HTTP_400_BAD_REQUEST,
-                data={"message": "You have reached the maximum number of participants"},
-            )
-
-        instance.save()
 
         channel_layer = get_channel_layer()
 
