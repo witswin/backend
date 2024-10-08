@@ -14,6 +14,7 @@ from quiz.models import (
     Hint,
     HintAchivement,
     CompetitionHint,
+    UserCompetitionHint,
 )
 from quiz.utils import is_user_eligible_to_participate
 
@@ -230,7 +231,7 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
             user_profile=validated_data.get("user_profile"),
             is_used=False,
             hint__in=allowed_user_hints,
-            id__in=validated_data.pop("user_hints"),
+            pk__in=map(lambda x: x.pk, validated_data.pop("user_hints")),
         )
 
         instance = super().create(validated_data)
@@ -249,14 +250,25 @@ class UserCompetitionSerializer(serializers.ModelSerializer):
                 hint.is_used = True
                 hint.used_at = timezone.now()
                 hint.save()
+                UserCompetitionHint.objects.create(
+                    user_competition=instance,
+                    hint=hint.hint,
+                    is_used=False,
+                    question=None,
+                )
                 instance.registered_hints.add(hint.hint)
                 registered_hints += 1
             else:
                 registered_hints += hint.count
                 for _ in range(min(hint.count, max_hint_count - registered_hints)):
-                    instance.registered_hints.add(hint.hint)
+                    UserCompetitionHint.objects.create(
+                        user_competition=instance,
+                        hint=hint.hint,
+                        is_used=False,
+                        question=None,
+                    )
 
-        instance.save()
+                    instance.registered_hints.add(hint.hint)
 
         return instance
 
