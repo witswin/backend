@@ -78,6 +78,11 @@ class EnrollInCompetitionView(ListCreateAPIView):
                     "message": "This competition has reached the maximum number of participants"
                 }
             )
+        
+        if competition.start_at < timezone.now():
+            raise ValidationError({
+                "message": "Not Allowed to enroll when quiz is finished"
+            })
 
         user = self.request.user.profile  # type: ignore
         serializer.save(user_profile=user)
