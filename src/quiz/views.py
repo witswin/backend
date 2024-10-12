@@ -1,12 +1,23 @@
 from typing import Any
 from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
+from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
+from django.db.models import Prefetch, OuterRef
 
 from quiz.paginations import StandardResultsSetPagination
 from quiz.filters import CompetitionFilter, NestedCompetitionFilter
-from quiz.models import Competition, Question, UserAnswer, UserCompetition
+from quiz.models import (
+    Competition,
+    Question,
+    UserAnswer,
+    UserCompetition,
+    Hint,
+    HintAchivement,
+)
 from quiz.permissions import IsEligibleToAnswer
 from quiz.serializers import (
     CompetitionSerializer,
@@ -14,6 +25,8 @@ from quiz.serializers import (
     QuestionSerializer,
     UserAnswerSerializer,
     UserCompetitionSerializer,
+    HintAchivementSerializer,
+    HintSerializer,
 )
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -48,14 +61,31 @@ class QuestionView(RetrieveAPIView):
 class EnrollInCompetitionView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [CompetitionFilter]
-    queryset = UserCompetition.objects.all()
+    queryset = UserCompetition.objects.prefetch_related("usercompetitionhint_set")
+
     serializer_class = UserCompetitionSerializer
 
     def perform_create(self, serializer: UserCompetitionSerializer):
+        competition = serializer.validated_data.get("competition")
+
+        if (
+            competition.max_participants
+            and competition.participants.count() >= competition.max_participants
+        ):
+
+            raise ValidationError(
+                {
+                    "message": "This competition has reached the maximum number of participants"
+                }
+            )
+        
+        if competition.start_at < timezone.now():
+            raise ValidationError({
+                "message": "Not Allowed to enroll when quiz is finished"
+            })
+
         user = self.request.user.profile  # type: ignore
         serializer.save(user_profile=user)
-
-        competition: Any = serializer.validated_data.get("competition")
 
         channel_layer = get_channel_layer()
 
@@ -65,9 +95,7 @@ class EnrollInCompetitionView(ListCreateAPIView):
         )
 
     def get_queryset(self):
-        return self.queryset.filter(
-            user_profile=self.request.user.profile
-        )  # type:ignore
+        return self.queryset.filter(user_profile=self.request.user.profile)
 
 
 class UserAnswerView(ListCreateAPIView):
@@ -81,3 +109,18 @@ class UserAnswerView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+class UserHintsView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = HintAchivementSerializer
+    queryset = HintAchivement.objects.order_by("is_used")
+
+    def get_queryset(self):
+        return self.queryset.filter(user_profile=self.request.user.profile)
+
+
+class HintsView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = HintSerializer
+    queryset = Hint.objects.filter(is_active=True)

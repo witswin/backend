@@ -23,7 +23,8 @@ def get_user_from_basic_auth(tk: str):
             return AnonymousUser()
 
         return token.user
-    except Exception:
+    except Exception as e:
+        print(e)
         return AnonymousUser()
 
 

@@ -9,7 +9,6 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
-from quiz.constants import ANSWER_TIME_SECOND, REST_BETWEEN_EACH_QUESTION_SECOND
 from quiz.utils import (
     get_previous_round_losses,
     get_quiz_question_state,
@@ -223,7 +222,8 @@ class QuizRestfulTestCase(APITestCase, BaseQuizTestUtils):
     def test_questions_first_state(self):
 
         self.update_quiz_start_at(
-            timezone.now() - timezone.timedelta(seconds=ANSWER_TIME_SECOND - 2)
+            timezone.now()
+            - timezone.timedelta(seconds=self.competition.question_time_seconds - 2)
         )
 
         self.assertEqual(
@@ -233,7 +233,9 @@ class QuizRestfulTestCase(APITestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND - 0.5
+                seconds=self.competition.question_time_seconds
+                + self.competition.rest_time_seconds
+                - 0.5
             )
         )
 
@@ -245,7 +247,8 @@ class QuizRestfulTestCase(APITestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND
+                seconds=self.competition.question_time_seconds
+                + self.competition.rest_time_seconds
             )
         )
 
@@ -256,7 +259,8 @@ class QuizRestfulTestCase(APITestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND * 2 + REST_BETWEEN_EACH_QUESTION_SECOND
+                seconds=self.competition.question_time_seconds * 2
+                + self.competition.rest_time_seconds
             )
         )
 
@@ -280,7 +284,8 @@ class QuizRestfulTestCase(APITestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND
+                seconds=self.competition.question_time_seconds
+                + self.competition.rest_time_seconds
             )
         )
 
@@ -349,7 +354,8 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
             user_enrolls.append(self.enroll_user(user, self.competition))
 
         self.update_quiz_start_at(
-            timezone.now() - timezone.timedelta(seconds=ANSWER_TIME_SECOND + 1)
+            timezone.now()
+            - timezone.timedelta(seconds=self.competition.question_time_seconds + 1)
         )
 
         question: Any = self.competition.questions.order_by("number").first()
@@ -377,9 +383,9 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND
-                + REST_BETWEEN_EACH_QUESTION_SECOND
-                + ANSWER_TIME_SECOND
+                seconds=self.competition.question_time_seconds
+                + self.competition.rest_time_seconds
+                + self.competition.question_time_seconds
                 + 1
             )
         )
@@ -409,8 +415,12 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=(ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND) * 2
-                + ANSWER_TIME_SECOND
+                seconds=(
+                    self.competition.question_time_seconds
+                    + self.competition.rest_time_seconds
+                )
+                * 2
+                + self.competition.question_time_seconds
                 + 1
             )
         )
@@ -475,7 +485,8 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
         self.update_quiz_start_at(
             timezone.now()
             - timezone.timedelta(
-                seconds=ANSWER_TIME_SECOND + REST_BETWEEN_EACH_QUESTION_SECOND
+                seconds=self.competition.question_time_seconds
+                + self.competition.rest_time_seconds
             )
         )
 
@@ -547,10 +558,13 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
             timezone.now()
             - timezone.timedelta(
                 seconds=(
-                    (REST_BETWEEN_EACH_QUESTION_SECOND + ANSWER_TIME_SECOND)
+                    (
+                        self.competition.rest_time_seconds
+                        + self.competition.question_time_seconds
+                    )
                     * self.competition.questions.count()
                 )
-                - REST_BETWEEN_EACH_QUESTION_SECOND
+                - self.competition.rest_time_seconds
                 - 3
             )
         )
@@ -614,7 +628,10 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
             timezone.now()
             - timezone.timedelta(
                 seconds=(
-                    (REST_BETWEEN_EACH_QUESTION_SECOND + ANSWER_TIME_SECOND)
+                    (
+                        self.competition.rest_time_seconds
+                        + self.competition.question_time_seconds
+                    )
                     * self.competition.questions.count()
                 )
                 + 3
