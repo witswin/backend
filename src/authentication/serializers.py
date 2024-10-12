@@ -1,5 +1,6 @@
 import json
 from rest_framework import serializers
+from eth_utils import to_checksum_address, is_checksum_address
 
 from authentication.models import UserProfile
 from core.crypto import Crypto
@@ -40,3 +41,27 @@ class AuthenticateSerializer(serializers.Serializer):
     
     return message["message"]["message"] == "Wits Sign In" and message["message"]["URI"] == "https://wits.win"
 
+class EIP55AddressField(serializers.CharField):
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        self.validate_eip55_address(value)
+        return value
+    @classmethod
+    def validate_eip55_address(cls,address):
+      try:
+          checksum_address = to_checksum_address(address)
+          if checksum_address != address:
+              raise ValueError("Address is not EIP-55 compliant")
+          if not is_checksum_address(address):
+              raise ValueError("Invalid EIP-55 address")
+      except ValueError as e:
+          raise ValueError(f"Invalid Ethereum address: {str(e)}")
+        
+      
+class AddressSerializer(serializers.Serializer):
+    address = EIP55AddressField(max_length=42)
+
+class VerifyWalletSerializer(serializers.Serializer):
+    nonce = serializers.CharField(max_length=255)
+    signature = serializers.CharField(max_length=255)
+    address = EIP55AddressField(max_length=42)
