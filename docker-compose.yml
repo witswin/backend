@@ -1,14 +1,13 @@
 name: "wits"
 
 services:
-
   celery:
     image: alimaktabi55/wits:v1.0
     build:
       context: .
       dockerfile: Dockerfile
-    
-    command: python -m celery -A witswin worker --beat --concurrency 1 -l INFO 
+
+    command: python -m celery -A witswin worker --beat --concurrency 1 -l INFO
     volumes:
       - ./src/:/usr/src/app
     depends_on:
@@ -25,14 +24,14 @@ services:
 
   app:
     image: alimaktabi55/wits:v1.0
- 
+
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
     build:
       context: .
       dockerfile: Dockerfile
-    
+
     command: python manage.py runserver 0.0.0.0:4444
     environment:
       - FIELD_KEY=${FIELD_KEY}
@@ -43,6 +42,12 @@ services:
       - MEMCACHEDCLOUD_SERVERS=memcached:11211
       - REDIS_PORT=6379
       - REDIS_HOST=redis
+      - TEST_WALLET_ADDRESS=0x856ad043c174D48Dc457dfdABf804cAD80901af3
+      - TEST_WALLET_PRIVATE_KEY=${TEST_WALLET_PRIVATE_KEY}
+      - OP_MAINNET_RPC_URL=https://mainnet.optimism.io
+      - DOMAIN=${DOMAIN}
+      - URI=${URI}
+
     expose:
       - 4444
     ports:
@@ -54,7 +59,7 @@ services:
       - ./src/:/usr/src/app
     networks:
       - base
-    
+
   database:
     image: postgres:14.1-alpine
     environment:
@@ -67,9 +72,13 @@ services:
       - base
     ports:
       - 5432:5432
-      
+
     healthcheck:
-      test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      test:
+        [
+          "CMD-SHELL",
+          "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -81,8 +90,6 @@ services:
       - cache:/data
     networks:
       - base
-
-
 
 volumes:
   db:
