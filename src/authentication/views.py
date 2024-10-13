@@ -10,7 +10,7 @@ from typing import Any
 from web3 import Web3
 
 import uuid
-from .SignWithEthereum import SignWithEthereum
+from .sign_with_ethereum import SignWithEthereum
 
 
 class GetProfileView(RetrieveUpdateAPIView):
@@ -70,10 +70,8 @@ class AuthenticateView(CreateAPIView):
 
 class CreateMessageView(CreateAPIView):
     serializer_class = AddressSerializer
-    
 
     def create(self, request, *args, **kwargs):
-        
         try:
             serializer = self.get_serializer(data=request.data)
 
@@ -84,10 +82,10 @@ class CreateMessageView(CreateAPIView):
         except ValueError:
             return Response({"message": "invalid address"}, status=status.HTTP_400_BAD_REQUEST)
 
+
 class VerifyWalletView(CreateAPIView):
     serializer_class = VerifyWalletSerializer
     queryset = UserProfile.objects.filter(user__is_active=True)
-
 
     def create(self, request, *args, **kwargs):
         try:
