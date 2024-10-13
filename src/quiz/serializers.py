@@ -299,14 +299,26 @@ class UserAnswerSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class CompetitionHintCreateSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    hint = serializers.PrimaryKeyRelatedField(
+        queryset=Hint.objects.all(), write_only=True
+    )
+
+
 class CompetitionCreateSerializer(serializers.ModelSerializer):
     questions = QuestionCreateSerializer(many=True)
     user_profile = serializers.HiddenField(default=CurrentUserProfileDefault())
     is_active = serializers.HiddenField(default=False)
+    builtin_hints = CompetitionHintCreateSerializer(write_only=True, many=True)
+    allowed_hint_types = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Hint.objects.all(), write_only=True
+    )
 
     class Meta:
         model = Competition
         fields = [
+            "id",
             "title",
             "details",
             "start_at",
@@ -321,11 +333,30 @@ class CompetitionCreateSerializer(serializers.ModelSerializer):
             "hint_count",
             "questions",
             "user_profile",
+            "builtin_hints",
+            "allowed_hint_types"
         ]
 
     def create(self, validated_data):
         questions_data = validated_data.pop("questions")
+        allowed_hints = validated_data.pop("allowed_hint_types")
+        builtin_hints = validated_data.pop("builtin_hints")
+
         competition = Competition.objects.create(**validated_data)
+
+
+        for hint in builtin_hints:
+            CompetitionHint.objects.create(
+                competition=competition, **hint
+            )
+
+        for hint in allowed_hints:
+            competition.allowed_hint_types.add(
+                hint
+            )
+
+        competition.save()
+
         for question_data in questions_data:
             choices_data = question_data.pop("choices")
             question = Question.objects.create(
