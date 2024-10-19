@@ -1,14 +1,10 @@
-
-
 # Witswin Project
-
 
 ## Overview
 
 Witswin is a Django-based web application designed for hosting quizzes and competitions. The project aims to provide a platform for users to participate in quizzes, compete with others, and win prizes.
 
 ## Features
-
 
 - [x] User registration and authentication
 - [x] Quiz implementation and score calculation
@@ -26,30 +22,34 @@ Witswin is a Django-based web application designed for hosting quizzes and compe
 - [ ] Extra time Hint
 - [ ] Veteran Hint
 
-
 ## Contributing
-------------
+
+---
 
 We welcome contributions from developers, designers, and anyone interested in improving the project. Here are ways to contribute:
 
 ### 1. Reporting Issues
 
-* If you find a bug or issue, create a new issue on the GitHub issue tracker.
-* Provide a clear description of the issue, steps to reproduce, and any relevant screenshots or logs.
+- If you find a bug or issue, create a new issue on the GitHub issue tracker.
+- Provide a clear description of the issue, steps to reproduce, and any relevant screenshots or logs.
 
 ### 2. Submitting Pull Requests
 
-* Fork the repository and create a new branch for your feature or bug fix.
-* Write clear and concise commit messages.
-* Submit a pull request to the main repository.
-* Ensure your code follows the project's coding standards and guidelines.
+- Fork the repository and create a new branch for your feature or bug fix.
+- Write clear and concise commit messages.
+- Submit a pull request to the main repository.
+- Ensure your code follows the project's coding standards and guidelines.
 
 ## Getting Started
----------------
+
+## [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/witswin/backend)
+
+---
 
 To get started with the project, follow these steps:
 
 ### Create ENV
+
 ```env
 POSTGRES_DB="wits"
 POSTGRES_USER="postgres"
@@ -75,8 +75,7 @@ PRIVY_APP_SECRET=""
 PRIVY_JWKS_URL=""
 ```
 
-
-<!-- ### Create base network 
+<!-- ### Create base network
 
 ```
 docker network create base
