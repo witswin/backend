@@ -192,7 +192,7 @@ class QuizConsumer(BaseJsonConsumer):
 
     @database_sync_to_async
     def get_current_question(self):
-        return self.service.get_current_question(self.user_competition)
+        return self.service.get_current_question(self.user_profile)
 
     @database_sync_to_async
     def get_competition_stats(self) -> Any:

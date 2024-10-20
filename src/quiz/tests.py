@@ -609,6 +609,7 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
 
         user_enroll1 = self.enroll_user(user1, self.competition)
         user_enroll2 = self.enroll_user(user2, self.competition)
+        user_enroll3 = self.enroll_user(user3, self.competition)
 
         questions_list = list(self.competition.questions.all())
         for question in questions_list[:-1]:
@@ -650,13 +651,55 @@ class QuizUtilsTestCase(TestCase, BaseQuizTestUtils):
             self.competition, self.get_competition_participants(), question_state
         )
 
-        print(question_state)
-
         losers = get_previous_round_losses(
             self.competition, self.get_competition_participants(), question_state
         )
         self.assertEqual(participants, 0, "All answered wrong")
         self.assertEqual(losers, 1, "One player lost at last question")
+
+    def test_not_answered_not_eligible(self):
+        user1 = self.create_user_profile("ali", "0xFD")
+        user_enroll1 = self.enroll_user(user1, self.competition)
+
+        questions_list = list(self.competition.questions.all())
+        for question in questions_list[:2]:
+            answer = self.create_answer(
+                user_enroll1,
+                question,
+                CORRECT_CHOICE_INDEX,
+            )
+
+        self.update_quiz_start_at(
+            timezone.now()
+            - timezone.timedelta(
+                seconds=(
+                    (
+                        self.competition.rest_time_seconds
+                        + self.competition.question_time_seconds
+                    )
+                    * 3
+                )
+                + 1
+            )
+        )
+
+        question_state = get_quiz_question_state(self.competition)
+
+        self.assertEqual(
+            question_state,
+            4,
+            "Must be at question 4",
+        )
+
+        losers = get_previous_round_losses(
+            self.competition, self.get_competition_participants(), question_state
+        )
+        self.assertEqual(losers, 1, "One player lost at third question")
+
+        self.assertFalse(
+            is_user_eligible_to_participate(user1, self.competition),
+            "User must not be eligible",
+        )
 
 
 class QuizConsumerTestCase(TestCase):
