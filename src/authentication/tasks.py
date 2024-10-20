@@ -1,6 +1,7 @@
 from django.utils import timezone
 from celery import shared_task
-from authentication import SignWithEthereum
+from authentication.sign_with_ethereum import SignWithEthereum
+
 
 @shared_task
 def remove_old_nonces() -> None:
@@ -12,7 +13,8 @@ def remove_old_nonces() -> None:
     current_time = timezone.now()  # Get the current time (timezone-aware)
 
     expired_addresses = [
-        address for address, (_, message) in sign.nonces.items() 
+        address
+        for address, (_, message) in sign.nonces.items()
         if message.expiration_time.to_datetime() < current_time
     ]
 

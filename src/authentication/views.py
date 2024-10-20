@@ -5,7 +5,12 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 from authentication.models import UserProfile
-from authentication.serializers import AddressSerializer, AuthenticateSerializer, UserProfileSerializer, VerifyWalletSerializer
+from authentication.serializers import (
+    AddressSerializer,
+    AuthenticateSerializer,
+    UserProfileSerializer,
+    VerifyWalletSerializer,
+)
 from typing import Any
 from web3 import Web3
 
@@ -67,7 +72,6 @@ class AuthenticateView(CreateAPIView):
         return response
 
 
-
 class CreateMessageView(CreateAPIView):
     serializer_class = AddressSerializer
 
@@ -76,11 +80,17 @@ class CreateMessageView(CreateAPIView):
             serializer = self.get_serializer(data=request.data)
 
             serializer.is_valid(raise_exception=True)
-            address = serializer.validated_data['address']
+            address = serializer.validated_data["address"]
             message = SignWithEthereum().create_message(address)
-            return Response({"message": message}, status=status.HTTP_200_OK)
+            nonce, _ = SignWithEthereum().nonces.get(address)
+
+            return Response(
+                {"message": message, "nonce": nonce}, status=status.HTTP_200_OK
+            )
         except ValueError:
-            return Response({"message": "invalid address"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"message": "invalid address"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class VerifyWalletView(CreateAPIView):
@@ -91,17 +101,23 @@ class VerifyWalletView(CreateAPIView):
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            
+
         except ValueError:
-            return Response({"message": "invalid data"}, status=status.HTTP_400_BAD_REQUEST)
-            
-        is_verified = SignWithEthereum().verify_message(request.data['address'], request.data['nonce'], request.data['signature'])
+            return Response(
+                {"message": "invalid data"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        is_verified = SignWithEthereum().verify_message(
+            request.data["address"], request.data["nonce"], request.data["signature"]
+        )
         headers = self.get_success_headers(serializer.data)
 
         if not is_verified:
-            return Response({"message": "Invalid signature"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        wallet_address = serializer.validated_data['address']
+            return Response(
+                {"message": "Invalid signature"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        wallet_address = serializer.validated_data["address"]
         try:
             profile = UserProfile.objects.get(
                 wallet_address=Web3.to_checksum_address(wallet_address)
